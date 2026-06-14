@@ -32,7 +32,6 @@ All modular scripts are automatically sourced on terminal startup. They are orga
 * **`adb_utils.sh`**: High-value ADB integration commands:
   * `adb-sysinfo` — Displays battery, temp, device metrics, and CPU usage.
   * `adb-screengrab` — Captures screenshot, pulls it to path, and deletes tmp on phone.
-  * `adb-appmanage` — Menu-driven application freezing/lifecycle management.
   * `adb-logcat [filter]` — Streams system logs with optional search filtering.
   * `adb-audit [option]` — Runs the Device Security & Privacy Audit Engine. Running without options shows a usage menu.
     * Options:
@@ -42,9 +41,13 @@ All modular scripts are automatically sourced on terminal startup. They are orga
       * `-p, --permissions`  Scan granted dangerous privacy permissions (categorized SMS, Microphone, Camera, GPS, etc.)
       * `-y, --system`       Scan active Device Administrators & Accessibility Services
       * `-i, --live`         Scan active Microphone, Camera, or Location access right now
-  * `adb-export [pkg]` — Extract and pull the base APK file of any installed app to the local directory.
-  * `adb-autostart` — Audits and toggles app boot components (`BOOT_COMPLETED` receivers) to prevent startup battery drain.
-  * `adb-standby` — Tune app standby buckets to aggressively force power-draining background apps into restricted standby.
+  * `adb-manage [option]` — Unified application action & optimization dashboard. Running without options shows an interactive menu.
+    * Options:
+      * `-f, --freeze <pkg>`   Freeze (disable) an app completely
+      * `-u, --unfreeze <pkg>` Unfreeze (enable) a frozen app
+      * `-s, --standby <pkg>`  Tune app standby bucket state
+      * `-e, --export <pkg>`   Extract and pull base APK file of an app
+      * `-a, --autostart`      Manage boot-start autostart receivers
 
 ---
 

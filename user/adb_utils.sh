@@ -63,49 +63,15 @@ adb-screengrab() {
     fi
 }
 
-# ── 3. App Lifecycle Manager (Freeze/Unfreeze) ──
-adb-appmanage() {
+# ── 3. Consolidated App Manager & Optimizer ──
+adb-manage() {
     if ! adb devices | grep -q "127.0.0.1:5555[[:space:]]*device"; then
         echo -e "${C_RED}❌ ADB loopback is offline. Run adbcon first.${C_RESET}"
         return 1
     fi
-
-    echo -e "\n${C_BOLD}${C_CYAN}─── APP LIFECYCLE MANAGER ───${C_RESET}"
-    echo " [1] List installed third-party apps"
-    echo " [2] Freeze an app (Disable background battery drain)"
-    echo " [3] Unfreeze an app (Re-enable app access)"
-    echo -n "👉 Selection (1-3): "
-    read choice
-    
-    case "$choice" in
-        1)
-            echo -e "\n📦 Installed Third-Party Packages:"
-            adb -s 127.0.0.1:5555 shell pm list packages -3 | tr -d '\r' | cut -d':' -f2 | sort | sed 's/^/  /'
-            ;;
-        2)
-            echo -n "👉 Enter package name to freeze: "
-            read pkg
-            if [ -n "$pkg" ]; then
-                echo -e "❄️ Freezing package $pkg..."
-                adb -s 127.0.0.1:5555 shell pm disable-user "$pkg"
-                echo -e "✅ Package disabled. It will not run or consume battery."
-            fi
-            ;;
-        3)
-            echo -n "👉 Enter package name to unfreeze: "
-            read pkg
-            if [ -n "$pkg" ]; then
-                echo -e "🔥 Unfreezing package $pkg..."
-                adb -s 127.0.0.1:5555 shell pm enable "$pkg"
-                echo -e "✅ Package enabled."
-            fi
-            ;;
-        *)
-            echo "❌ Invalid choice."
-            ;;
-    esac
-    echo ""
+    python3 "$HOME/.shell.d/user/adb-manage.py" "$@"
 }
+
 
 # ── 4. Silent Background APK Installer (DISABLED FOR SECURITY) ──
 # adb-install() {
@@ -168,83 +134,3 @@ adb-audit() {
     python3 "$HOME/.shell.d/user/adb-audit.py" "$key"
 }
 
-# ── 7. APK Extractor & Exporter ──
-adb-export() {
-    if ! adb devices | grep -q "127.0.0.1:5555[[:space:]]*device"; then
-        echo -e "${C_RED}❌ ADB loopback is offline. Run adbcon first.${C_RESET}"
-        return 1
-    fi
-
-    local pkg="$1"
-    if [ -z "$pkg" ]; then
-        echo -n "🔍 Enter package search query (e.g. whatsapp): "
-        read query
-        if [ -z "$query" ]; then
-            echo -e "${C_RED}❌ Query cannot be empty.${C_RESET}"
-            return 1
-        fi
-        
-        echo -e "\n📦 Matching packages:"
-        local matches; matches=$(adb -s 127.0.0.1:5555 shell pm list packages -3 | grep -i "$query" | tr -d '\r' | cut -d':' -f2 | sort)
-        if [ -z "$matches" ]; then
-            echo -e "${C_RED}❌ No matching third-party packages found.${C_RESET}"
-            return 1
-        fi
-        
-        local options=()
-        local i=1
-        while read -r line; do
-            options+=("$line")
-            echo " [$i] $line"
-            i=$((i+1))
-        done <<< "$matches"
-        
-        echo -n "👉 Select app to export (1-$((i-1))): "
-        read choice
-        if ! [[ "$choice" =~ ^[0-9]+$ ]] || [ "$choice" -lt 1 ] || [ "$choice" -ge "$i" ]; then
-            echo -e "${C_RED}❌ Invalid choice.${C_RESET}"
-            return 1
-        fi
-        pkg="${options[$((choice-1))]}"
-    fi
-
-    echo -e "\n🔍 Locating APK for ${C_YELLOW}$pkg${C_RESET}..."
-    local paths; paths=$(adb -s 127.0.0.1:5555 shell pm path "$pkg" | tr -d '\r')
-    if [ -z "$paths" ]; then
-        echo -e "${C_RED}❌ Could not find package path for $pkg.${C_RESET}"
-        return 1
-    fi
-
-    local base_path; base_path=$(echo "$paths" | grep "base.apk" | head -n 1 | cut -d':' -f2)
-    if [ -z "$base_path" ]; then
-        base_path=$(echo "$paths" | head -n 1 | cut -d':' -f2)
-    fi
-
-    local outfile="${pkg}.apk"
-    echo -e "📥 Pulling APK from: ${C_DIM}$base_path${C_RESET}"
-    adb -s 127.0.0.1:5555 pull "$base_path" "./$outfile"
-    
-    if [ $? -eq 0 ]; then
-        echo -e "🎉 Successfully exported APK as: ${C_GREEN}$outfile${C_RESET} in current directory."
-    else
-        echo -e "${C_RED}❌ Failed to pull APK.${C_RESET}"
-    fi
-}
-
-# ── 8. Boot Component Autostart Controller ──
-adb-autostart() {
-    if ! adb devices | grep -q "127.0.0.1:5555[[:space:]]*device"; then
-        echo -e "${C_RED}❌ ADB loopback is offline. Run adbcon first.${C_RESET}"
-        return 1
-    fi
-    python3 "$HOME/.shell.d/user/adb-autostart.py"
-}
-
-# ── 9. Standby Bucket Controller ──
-adb-standby() {
-    if ! adb devices | grep -q "127.0.0.1:5555[[:space:]]*device"; then
-        echo -e "${C_RED}❌ ADB loopback is offline. Run adbcon first.${C_RESET}"
-        return 1
-    fi
-    python3 "$HOME/.shell.d/user/adb-standby.py"
-}
