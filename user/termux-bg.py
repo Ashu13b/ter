@@ -40,31 +40,46 @@ def check_phantom_processes():
     return not enabled
 
 def show_status():
-    print("\n\033[1;35m============================================================\033[0m")
-    print("          \033[1mTERMUX BACKGROUND STABILITY AUDIT\033[0m")
-    print("\033[1;35m============================================================\033[0m")
-    
-    # 1. WakeLock
     wl = get_wake_lock_status()
-    wl_status = "\033[1;32m[ACTIVE]\033[0m (Prevents CPU from entering deep sleep)" if wl else "\033[1;33m[INACTIVE]\033[0m (CPU can sleep, pausing tasks)"
-    print(f"  • WakeLock: {wl_status}")
-    
-    # 2. Phantom Process Monitor
     phantom_opt = check_phantom_processes()
-    phantom_status = "\033[1;32m[OPTIMIZED]\033[0m (Disabled, processes won't be killed)" if phantom_opt else "\033[1;31m[LIMITING]\033[0m (Enabled, Android kills background child tasks)"
-    print(f"  • Phantom Process Killer: {phantom_status}")
-    
-    # 3. Battery Saver Whitelist
     battery_opt = check_battery_optimization()
-    battery_status = "\033[1;32m[EXEMPTED]\033[0m (Whitelisted from App Standby & Doze)" if battery_opt else "\033[1;31m[OPTIMIZED (RESTRICTED)]\033[0m (Android will suspend app in idle)"
-    print(f"  • Battery Optimization: {battery_status}")
-    print("\033[1;35m------------------------------------------------------------\033[0m")
+    
+    wl_icon = "🟢" if wl else "🟡"
+    wl_raw = "ACTIVE" if wl else "INACTIVE"
+    wl_state = f"\033[1;32m{wl_raw}\033[0m" if wl else f"\033[1;33m{wl_raw}\033[0m"
+    wl_padded = wl_state + (" " * (28 - len(wl_raw)))
+    
+    phantom_icon = "🟢" if phantom_opt else "🔴"
+    phantom_raw = "OPTIMIZED" if phantom_opt else "LIMITING"
+    phantom_state = f"\033[1;32m{phantom_raw}\033[0m" if phantom_opt else f"\033[1;31m{phantom_raw}\033[0m"
+    phantom_padded = phantom_state + (" " * (28 - len(phantom_raw)))
+    
+    battery_icon = "🟢" if battery_opt else "🔴"
+    battery_raw = "EXEMPTED" if battery_opt else "RESTRICTED"
+    battery_state = f"\033[1;32m{battery_raw}\033[0m" if battery_opt else f"\033[1;31m{battery_raw}\033[0m"
+    battery_padded = battery_state + (" " * (28 - len(battery_raw)))
+    
+    print("\n\033[1;35m┌──────────────────────────────────────────────────────────┐\033[0m")
+    print("\033[1;35m│\033[0m          ⚙️  \033[1mTERMUX BACKGROUND STABILITY ENGINE\033[0m          \033[1;35m│\033[0m")
+    print("\033[1;35m├──────────────────────────────────────────────────────────┤\033[0m")
+    print(f"\033[1;35m│\033[0m  {wl_icon}  WakeLock             : {wl_padded}\033[1;35m│\033[0m")
+    print("\033[1;35m│\033[0m      ↳ Prevents CPU from entering deep sleep             \033[1;35m│\033[0m")
+    print("\033[1;35m│\033[0m                                                          \033[1;35m│\033[0m")
+    print(f"\033[1;35m│\033[0m  {phantom_icon}  Phantom Process      : {phantom_padded}\033[1;35m│\033[0m")
+    print("\033[1;35m│\033[0m      ↳ Disabled, child processes won't be killed         \033[1;35m│\033[0m")
+    print("\033[1;35m│\033[0m                                                          \033[1;35m│\033[0m")
+    print(f"\033[1;35m│\033[0m  {battery_icon}  Battery Optimization : {battery_padded}\033[1;35m│\033[0m")
+    print("\033[1;35m│\033[0m      ↳ Whitelisted from App Standby & Doze               \033[1;35m│\033[0m")
+    print("\033[1;35m├──────────────────────────────────────────────────────────┤\033[0m")
     
     if not phantom_opt or not battery_opt:
-        print("💡 Some background settings are not optimized. Run: \033[1;36mtermux-bg fix\033[0m")
+        msg = "  ⚠️  Some constraints are active. Run: termux-bg fix"
+        print(f"\033[1;35m│\033[0m\033[1;33m{msg:<58}\033[0m\033[1;35m│\033[0m")
     else:
-        print("✅ Termux is fully optimized to run indefinitely in the background!")
-    print()
+        msg = "  ✅  Termux is fully optimized for background tasks!"
+        print(f"\033[1;35m│\033[0m\033[1;32m{msg:<58}\033[0m\033[1;35m│\033[0m")
+        
+    print("\033[1;35m└──────────────────────────────────────────────────────────┘\033[0m\n")
 
 def fix_settings():
     print("\n⚡ Optimizing Termux background permissions...")
@@ -156,21 +171,35 @@ def list_tasks():
     tasks = load_tasks()
     running = {}
     
-    print("\n📦 Active Background Tasks:")
-    count = 0
-    for name, info in list(tasks.items()):
-        if is_pid_running(info["pid"]):
-            running[name] = info
-            count += 1
-            print(f"  • \033[1m{name:<15}\033[0m | PID: {info['pid']:<6} | Started: {info['started']}")
-            print(f"    ↳ Cmd: {info['command']}")
-            print(f"    ↳ Log: {info['log']}")
-        else:
-            pass
+    task_keys = [k for k, v in tasks.items() if is_pid_running(v["pid"])]
+    
+    print("\n\033[1;35m┌──────────────────────────────────────────────────────────────────────────┐\033[0m")
+    print("\033[1;35m│\033[0m                       📦 \033[1mACTIVE BACKGROUND TASKS\033[0m                          \033[1;35m│\033[0m")
+    print("\033[1;35m├──────────────────────────────────────────────────────────────────────────┤\033[0m")
+    
+    for idx, name in enumerate(task_keys, 1):
+        info = tasks[name]
+        running[name] = info
+        print(f"\033[1;35m│\033[0m  [{idx}] \033[1;36m{name:<16}\033[0m | PID: {info['pid']:<6} | Started: {info['started']:<19}    \033[1;35m│\033[0m")
+        
+        cmd_str = info['command']
+        if len(cmd_str) > 60:
+            cmd_str = cmd_str[:57] + "..."
+        print(f"\033[1;35m│\033[0m    ↳ Cmd: {cmd_str:<63}\033[1;35m│\033[0m")
+        
+        log_str = info['log']
+        if len(log_str) > 60:
+            log_str = "..." + log_str[-57:]
+        print(f"\033[1;35m│\033[0m    ↳ Log: {log_str:<63}\033[1;35m│\033[0m")
+        
+        if idx < len(task_keys):
+            print("\033[1;35m├──────────────────────────────────────────────────────────────────────────┤\033[0m")
             
-    if count == 0:
-        print("  (No active background tasks running)")
-    print()
+    if not task_keys:
+        msg = "  No active background tasks running"
+        print(f"\033[1;35m│\033[0m{msg:<74}\033[1;35m│\033[0m")
+        
+    print("\033[1;35m└──────────────────────────────────────────────────────────────────────────┘\033[0m\n")
     
     save_tasks(running)
 
