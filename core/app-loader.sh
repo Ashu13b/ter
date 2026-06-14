@@ -32,16 +32,15 @@ apps() {
             for _manifest in "$HOME/.shell.d/apps"/*/manifest.json; do
                 [ -f "$_manifest" ] || continue
                 found=1
-                python3 -c "
-import json
-m = json.load(open('$_manifest'))
-name = m.get('name', 'unknown')
-ver = m.get('version', '?')
-cmds = ', '.join(m.get('commands', []))
-padded_name = f'{name:<14}'
-link = f'\033]8;;file://$_manifest\033\\{padded_name}\033]8;;\033\\'
-print(f'  {link} v{ver:<6} [{cmds}]')
-" 2>/dev/null
+                local info; info=$(python3 -c "
+import sys, json
+m = json.load(open(sys.argv[1]))
+print(f\"{m.get('name', 'unknown')}|{m.get('version', '?')}|{', '.join(m.get('commands', []))}\")
+" "$_manifest" 2>/dev/null)
+                IFS='|' read -r name ver cmds <<< "$info"
+                local padded_name; padded_name=$(printf "%-14s" "$name")
+                local link; link=$(style_link "file://$_manifest" "$padded_name")
+                echo -e "  ${link} v${ver} [${cmds}]"
             done
             [ $found -eq 0 ] && echo "  No apps registered."
             unset _manifest
