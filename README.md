@@ -35,6 +35,7 @@ All modular scripts are automatically sourced on terminal startup. They are orga
   * `adb-appmanage` — Menu-driven application freezing/lifecycle management.
   * `adb-logcat [filter]` — Streams system logs with optional search filtering.
   * `adb-audit-sideloads` — Scans for apps installed via ADB or untrusted sources (sideloaded).
+  * `adb-audit-hidden` — Audits running background apps that lack a launcher app icon.
 
 ---
 
