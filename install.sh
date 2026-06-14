@@ -60,8 +60,7 @@ fi
 command -v termux-reload-settings &>/dev/null && termux-reload-settings
 
 manual_path="$HOME/.shell.d/docs/cli_manual.md"
-clickable_manual=$(echo -e "\e]8;;file://$manual_path\e\\\\$manual_path\e]8;;\e\\\\")
 
 echo -e "\n\e[1;32m✔ TER environment installed successfully!\e[0m"
-echo -e "📖 Read the local CLI manual: $clickable_manual"
+echo -e "📖 Read the local CLI manual: $manual_path"
 echo -e "Run: source ~/.bashrc (or open a new terminal)\n"

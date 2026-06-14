@@ -39,8 +39,7 @@ print(f\"{m.get('name', 'unknown')}|{m.get('version', '?')}|{', '.join(m.get('co
 " "$_manifest" 2>/dev/null)
                 IFS='|' read -r name ver cmds <<< "$info"
                 local padded_name; padded_name=$(printf "%-14s" "$name")
-                local link; link=$(style_link "file://$_manifest" "$padded_name")
-                echo -e "  ${link} v${ver} [${cmds}]"
+                echo -e "  ${padded_name} v${ver} [${cmds}]"
             done
             [ $found -eq 0 ] && echo "  No apps registered."
             unset _manifest

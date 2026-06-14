@@ -81,9 +81,7 @@ adb-screengrab() {
     adb -s 127.0.0.1:5555 pull /sdcard/Download/tmp_screenshot.png "$local_dir/$filename" >/dev/null 2>&1
     adb -s 127.0.0.1:5555 shell rm /sdcard/Download/tmp_screenshot.png
     
-    local file_url="file://$local_dir/$filename"
-    local link_text; link_text=$(style_link "$file_url" "$filename")
-    echo -e "🎉 Screenshot saved in local folder as: ${C_GREEN}${link_text}${C_RESET}"
+    echo -e "🎉 Screenshot saved in local folder as: ${C_GREEN}$local_dir/$filename${C_RESET}"
     if command -v termux-open &>/dev/null; then
         termux-open "$local_dir/$filename"
     fi

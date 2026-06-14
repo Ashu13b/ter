@@ -81,8 +81,7 @@ def export_apk(pkg):
         proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         if proc.returncode == 0:
             outfile_abs = os.path.abspath(outfile)
-            clickable_outfile = make_link(f"file://{outfile_abs}", outfile)
-            print(f"🎉 Successfully exported APK as: \033[1;32m{clickable_outfile}\033[0m in current directory.")
+            print(f"🎉 Successfully exported APK as: \033[1;32m{outfile_abs}\033[0m")
             return True
         else:
             print(f"❌ Failed to pull APK: {proc.stderr.strip()}")
