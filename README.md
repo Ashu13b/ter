@@ -1,6 +1,6 @@
-# 🌟 TER: Termux Custom Environment Manual
+# 🌟 TER: Termux Custom Environment (v1.1)
 
-TER is a portable, independent Termux environment configuration repository. It installs a modular shell structure, dynamic welcome dashboard, custom keyboard layout, and a modular app-registration system. It works completely standalone or can be integrated with other projects (like NEXUS) via the registry system.
+TER is a portable, independent Termux environment configuration repository. It installs a modular shell structure, custom keyboard layout, and a modular app-registration system. It works completely standalone or can be integrated with other projects (like NEXUS) via the registry system.
 
 > [!TIP]
 > For a detailed guide on all custom CLI utilities, usage flags, and offline capabilities, see the [CLI Manual](docs/cli_manual.md).
@@ -25,13 +25,17 @@ All modular scripts are automatically sourced on terminal startup. They are orga
 
 ### 📂 `user/` (User Shortcuts & Workspace)
 * **`aliases.sh`**: Base aliases and functions:
-  * `c` — Clear screen, print current path, and list files.
+  * `cd ws` / `cd dl` — Smart navigation to `/workspace` and `/Download` directories (via custom `cd()` function).
   * `re` — Reload the Zsh / Bash configurations instantly.
   * `up` — Package manager updater.
-  * `ws` / `dl` — Instant jumps to `/workspace` and `/Download` directories.
+  * `cls` — Clear screen.
+  * `..` / `...` — Navigate up one/two directory levels.
+  * `path` — Print `$PATH` entries, one per line.
   * `kocr-app` / `kocr-res` — Jump shortcuts to Kaggle OCR project.
-* **`welcome.sh`**: Renders the startup welcome dashboard and Operations Matrix.
 * **`tab_title.sh`**: Custom cross-shell compatible tab naming function.
+* **`termux-bg.py`**: Background stability engine (see section below).
+* **`termux_bg.sh`**: Shell wrapper alias for `termux-bg`.
+* **`z-run.sh`**: Startup hook that runs a compact background stability check on each new interactive session.
 * **`adb_utils.sh`**: High-value ADB integration commands:
   * `adb-sysinfo` — Displays battery, temp, device metrics, and CPU usage.
   * `adb-screengrab` — Captures screenshot, pulls it to path, and deletes tmp on phone.
@@ -72,7 +76,7 @@ Each registered app should contain a `manifest.json` file in its registration di
 ### Component Files
 Within `~/.shell.d/apps/<app-name>/`, you can drop:
 - `*.sh` files (e.g. `aliases.sh`, `complete.sh`): These are automatically sourced on terminal startup.
-- `welcome.sh`: A shell script contributing additional grid options or details to the central `welcome` Operations Matrix.
+- `welcome.hook`: A shell snippet contributing additional output to startup (currently unused but supported).
 
 ### Management Command
 - `apps list` or `apps`: Displays all currently registered applications, versions, and commands.
@@ -104,18 +108,30 @@ The custom function `tabname()` dynamically renames the Termux side-drawer sessi
 
 ---
 
-## ⚙️ Background Task & Stability Manager (`~/.shell.d/user/termux-bg.py`)
-`termux-bg` is a background stability utility that exempts Termux from Android background constraints and runs tasks reliably:
-* **Background Audit**: Run `termux-bg status` to audit WakeLock, battery optimization whitelists, and Phantom Process Killer states.
-* **Auto-Fix Limits**: Run `termux-bg fix` to disable the Phantom Process Killer and exempt Termux from battery savings via loopback ADB.
-* **Safe Background Runs**: Run `termux-bg run <name> "<command>"` to execute tasks with:
-  * Persistent Termux WakeLocks (preventing CPU sleep).
-  * System notification cards on completion (exit codes).
-  * Logging outputs redirected to `~/.termux/bg_logs/<name>_<timestamp>.log`.
-* **Monitor Tasks**: Use `termux-bg list` to view active background runs, `termux-bg stop <name>` to kill a task, and `termux-bg log <name>` to view output logs.
+## ⚙️ Background Task & Stability Manager (`termux-bg`)
+
+`termux-bg` is a background stability utility that exempts Termux from Android background constraints and runs tasks reliably.
+
+### Startup Behavior
+On every new interactive terminal session, a **compact one-line** stability summary is printed automatically:
+```
+⚙ BG  WakeLock:✓  Phantom:✓  Battery:✓  [STABLE]
+```
+
+### Commands
+
+| Command | Description |
+|:---|:---|
+| `termux-bg status` | Quick compact stability audit (one-liner) |
+| `termux-bg status -f` | Full detailed audit with descriptions (verbose box) |
+| `termux-bg fix` | Optimize via ADB (phantom limit → 2048, battery whitelist) |
+| `termux-bg run <name> <cmd>` | Launch command in background with WakeLock & logging |
+| `termux-bg list` | List all active background tasks |
+| `termux-bg stop <name>` | Terminate a running background task |
+| `termux-bg log <name>` | Show log path and tail last 20 lines |
+| `termux-bg -h` | Show full help with examples |
 
 ---
-
 
 ## 🚀 Installation
 

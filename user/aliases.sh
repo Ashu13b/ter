@@ -11,14 +11,13 @@ cd() {
         builtin cd "$@"
     fi
 }
-alias h='cd ~'; alias ws='cd /storage/emulated/0/workspace'; alias dl='cd /storage/emulated/0/Download';
 alias ..='cd ..'; alias ...='cd ../..'
 
 # ── Package Management ──
 alias up='pkg update && pkg upgrade -y'; alias re='[ -n "$ZSH_VERSION" ] && source ~/.zshrc || source ~/.bashrc'
 
 # ── Utility ──
-alias cls='clear'; alias c='clear && pwd && ls'
+alias cls='clear'
 alias path='echo -e ${PATH//:/\\n}'
 
 # ── Network Utilities ──

@@ -75,11 +75,24 @@ def check_phantom_processes():
         
     return False, "RESTRICTED (32)"
 
-def show_status():
+def show_status(full=False):
     wl = get_wake_lock_status()
     phantom_opt, phantom_raw = check_phantom_processes()
     battery_opt = check_battery_optimization()
     
+    if not full:
+        # Compact one-line startup summary
+        wl_s = "\033[1;32m✓\033[0m" if wl else "\033[1;33m✗\033[0m"
+        ph_s = "\033[1;32m✓\033[0m" if phantom_opt else "\033[1;31m✗\033[0m"
+        bt_s = "\033[1;32m✓\033[0m" if battery_opt else "\033[1;31m✗\033[0m"
+        all_ok = wl and phantom_opt and battery_opt
+        label = "\033[1;32mSTABLE\033[0m" if all_ok else "\033[1;33mCHECK\033[0m"
+        print(f"\033[1;35m⚙ BG\033[0m  WakeLock:{wl_s}  Phantom:{ph_s}  Battery:{bt_s}  [{label}]  \033[2m(termux-bg status -f for details)\033[0m")
+        if not all_ok:
+            print(f"  \033[33m↳ Run \033[1mtermux-bg fix\033[0;33m to optimize\033[0m")
+        return
+
+    # Full verbose box
     wl_icon = "🟢" if wl else "🟡"
     wl_raw = "ACTIVE" if wl else "INACTIVE"
     wl_state = f"\033[1;32m{wl_raw}\033[0m" if wl else f"\033[1;33m{wl_raw}\033[0m"
@@ -262,14 +275,22 @@ def stop_task(name):
 
 def print_help():
     print("\033[1;36mTERMUX BACKGROUND STABILITY MANAGER\033[0m")
-    print("Usage:")
-    print("  termux-bg status             Audit background stability states")
-    print("  termux-bg fix                Optimize settings via ADB (limits phantom processes to 2048, whitelists battery)")
-    print("  termux-bg run <name> <cmd>   Launch command safely in background with WakeLocks & Logging")
-    print("  termux-bg list               List active running background tasks")
-    print("  termux-bg stop <name>        Terminate a background task")
-    print("  termux-bg log <name>         Show log path or tail the logs")
-    print("  termux-bg -h | --help        Show this help documentation")
+    print()
+    print("\033[1mStability:\033[0m")
+    print("  termux-bg status             Quick audit (compact one-liner)")
+    print("  termux-bg status -f          Full detailed audit with descriptions")
+    print("  termux-bg fix                Optimize via ADB (phantom limit → 2048, battery whitelist)")
+    print()
+    print("\033[1mBackground Tasks:\033[0m")
+    print("  termux-bg run <name> <cmd>   Launch command in background with WakeLock & logging")
+    print("  termux-bg list               List all active background tasks")
+    print("  termux-bg stop <name>        Terminate a running background task")
+    print("  termux-bg log <name>         Show log path and tail last 20 lines")
+    print()
+    print("\033[1mExamples:\033[0m")
+    print("  termux-bg run myserver \"python3 -m http.server 8080\"")
+    print("  termux-bg stop myserver")
+    print("  termux-bg log myserver")
     print()
 
 def main():
@@ -280,7 +301,8 @@ def main():
         
     cmd = args[0]
     if cmd == "status":
-        show_status()
+        full = len(args) > 1 and args[1] in ["-f", "--full"]
+        show_status(full=full)
     elif cmd == "fix":
         fix_settings()
     elif cmd == "run":
