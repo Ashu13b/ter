@@ -107,23 +107,12 @@ adb-appmanage() {
     echo ""
 }
 
-# ── 4. Silent Background APK Installer ──
-adb-install() {
-    if ! adb devices | grep -q "127.0.0.1:5555[[:space:]]*device"; then
-        echo -e "${C_RED}❌ ADB loopback is offline. Run adbcon first.${C_RESET}"
-        return 1
-    fi
-    if [ -z "$1" ]; then
-        echo -e "Usage: adb-install <path-to-apk-file>"
-        return 1
-    fi
-    if [ ! -f "$1" ]; then
-        echo -e "${C_RED}❌ File not found: $1${C_RESET}"
-        return 1
-    fi
-    echo -e "📦 Installing APK: $1..."
-    adb -s 127.0.0.1:5555 install -r "$1"
-}
+# ── 4. Silent Background APK Installer (DISABLED FOR SECURITY) ──
+# adb-install() {
+#     echo -e "${C_RED}⚠️ adb-install has been disabled for security reasons.${C_RESET}"
+#     echo -e "If you want to re-enable it, edit your ~/.shell.d/user/adb_utils.sh file."
+#     return 1
+# }
 
 # ── 5. System Logcat Streamer & Filter ──
 adb-logcat() {
@@ -138,4 +127,31 @@ adb-logcat() {
         echo -e "📋 Streaming system logs (Press Ctrl+C to exit)..."
         adb -s 127.0.0.1:5555 logcat
     fi
+}
+
+# ── 6. Audit Sideloaded Apps (Sideload / ADB Installation Scan) ──
+adb-audit-sideloads() {
+    if ! adb devices | grep -q "127.0.0.1:5555[[:space:]]*device"; then
+        echo -e "${C_RED}❌ ADB loopback is offline. Run adbcon first.${C_RESET}"
+        return 1
+    fi
+
+    echo -e "\n${C_BOLD}${C_CYAN}─── SIDELOADED/ADB APP AUDIT ───${C_RESET}"
+    echo -e "${C_DIM}Scanning installed apps for missing or untrusted installer sources...${C_RESET}\n"
+
+    # Fetch packages and installer info, filter for installer=null or empty
+    local audit_list; audit_list=$(adb -s 127.0.0.1:5555 shell pm list packages -i -3 2>/dev/null | tr -d '\r' | grep -E "installer=(null| |$)")
+
+    if [ -n "$audit_list" ]; then
+        echo -e "${C_YELLOW}⚠️  Detected apps sideloaded via ADB or manual installation files:${C_RESET}"
+        echo "$audit_list" | while read -r line; do
+            local pkg; pkg=$(echo "$line" | awk '{print $1}' | cut -d':' -f2)
+            local inst; inst=$(echo "$line" | awk '{print $2}' | cut -d'=' -f2)
+            echo -e "  • ${C_RED}${pkg}${C_RESET} (Installer: ${C_DIM}${inst:-Unknown}${C_RESET})"
+        done
+        echo -e "\n${C_DIM}Note: Pre-bundled system components or manually sideloaded apps show 'null' or 'Unknown'.${C_RESET}"
+    else
+        echo -e "${C_GREEN}✔ No sideloaded third-party apps detected. All apps installed from official stores.${C_RESET}"
+    fi
+    echo ""
 }
