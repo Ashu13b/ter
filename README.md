@@ -33,8 +33,8 @@ All modular scripts are automatically sourced on terminal startup. They are orga
   * `adb-sysinfo` — Displays battery, temp, device metrics, and CPU usage.
   * `adb-screengrab` — Captures screenshot, pulls it to path, and deletes tmp on phone.
   * `adb-appmanage` — Menu-driven application freezing/lifecycle management.
-  * `adb-install <apk>` — Silently installs an APK from your workspace.
   * `adb-logcat [filter]` — Streams system logs with optional search filtering.
+  * `adb-audit-sideloads` — Scans for apps installed via ADB or untrusted sources (sideloaded).
 
 ---
 
