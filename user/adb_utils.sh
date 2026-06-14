@@ -165,7 +165,7 @@ adb-audit() {
             ;;
     esac
 
-    python3 "$HOME/.local/bin/adb-audit.py" "$key"
+    python3 "$HOME/.shell.d/user/adb-audit.py" "$key"
 }
 
 # ── 7. APK Extractor & Exporter ──
@@ -237,7 +237,7 @@ adb-autostart() {
         echo -e "${C_RED}❌ ADB loopback is offline. Run adbcon first.${C_RESET}"
         return 1
     fi
-    python3 "$HOME/.local/bin/adb-autostart.py"
+    python3 "$HOME/.shell.d/user/adb-autostart.py"
 }
 
 # ── 9. Standby Bucket Controller ──
@@ -246,5 +246,5 @@ adb-standby() {
         echo -e "${C_RED}❌ ADB loopback is offline. Run adbcon first.${C_RESET}"
         return 1
     fi
-    python3 "$HOME/.local/bin/adb-standby.py"
+    python3 "$HOME/.shell.d/user/adb-standby.py"
 }

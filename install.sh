@@ -23,12 +23,6 @@ for dir in core network user; do
 done
 success "Shell modules deployed to $TARGET"
 
-if [ -d "$REPO_DIR/bin" ]; then
-    cp -r "$REPO_DIR/bin/"* "$HOME/.local/bin/" 2>/dev/null || true
-    chmod +x "$HOME/.local/bin/"*.py
-    success "Scripts deployed to $HOME/.local/bin"
-fi
-
 
 if [ -f "$REPO_DIR/termux.properties" ]; then
     cp "$REPO_DIR/termux.properties" "$HOME/.termux/termux.properties"
