@@ -292,7 +292,15 @@ def autostart_menu():
             
         rx = receivers[idx]
         comp_path = f"{rx['package']}/{rx['component']}"
+        category = classify_package(rx["package"])
         if rx["enabled"]:
+            if category != "Safe to Disable":
+                print(f"\033[1;33m⚠️ WARNING: This app is classified as '{category}'.\033[0m")
+                print("  Disabling its autostart receiver may prevent it from starting up or receiving boot messages.")
+                confirm = input("👉 Are you sure you want to disable it? (y/N): ").strip().lower()
+                if confirm != 'y':
+                    print("❌ Action cancelled.")
+                    continue
             print(f"❄️ Disabling autostart component {comp_path}...")
             stdout, stderr, code = run_adb(["shell", "pm disable", comp_path])
             if code == 0 and ("new state" in stdout.lower() or "disabled" in stdout.lower()):
@@ -342,28 +350,113 @@ def search_package_interactive(msg="Enter package search query (e.g. whatsapp): 
     print("❌ Invalid selection.")
     return None
 
+def auto_optimize():
+    print("\n\033[1;35m⚡ RUNNING SAFE AUTO-OPTIMIZATION ⚡\033[0m")
+    print("------------------------------------------------------------")
+    
+    # 1. Standby bucket optimization
+    print("⏳ Optimizing Standby Buckets...")
+    packages = get_third_party_packages()
+    restricted_count = 0
+    for pkg in packages:
+        category = classify_package(pkg)
+        if category == "Safe to Disable":
+            bucket_out, _, _ = run_adb(["shell", "am get-standby-bucket", pkg])
+            bucket_out = bucket_out.strip()
+            if "45" not in bucket_out and "restricted" not in bucket_out.lower():
+                print(f"  ❄️ Restricting standby for: {pkg}...")
+                if set_standby(pkg, "restricted"):
+                    restricted_count += 1
+                    
+    # 2. Autostart receiver optimization
+    print("\n⏳ Optimizing Boot Autostart Receivers...")
+    out, _, _ = run_adb(["shell", "pm query-receivers -a android.intent.action.BOOT_COMPLETED"])
+    third_party_names = set(packages)
+    
+    receivers = []
+    lines = out.splitlines()
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if "Receiver #" in line:
+            current_pkg = None
+            current_name = None
+            current_enabled = None
+            i += 1
+            while i < len(lines) and "Receiver #" not in lines[i]:
+                subline = lines[i].strip()
+                if "ApplicationInfo:" in lines[i]:
+                    while i < len(lines) and "Receiver #" not in lines[i]:
+                        i += 1
+                    break
+                if subline.startswith("name="):
+                    match = re.search(r"name=(\S+)", subline)
+                    if match:
+                        current_name = match.group(1)
+                elif subline.startswith("packageName="):
+                    match = re.search(r"packageName=(\S+)", subline)
+                    if match:
+                        current_pkg = match.group(1)
+                elif subline.startswith("enabled="):
+                    match = re.search(r"enabled=(true|false)", subline)
+                    if match:
+                        current_enabled = match.group(1) == "true"
+                i += 1
+            if current_pkg in third_party_names and current_name:
+                receivers.append({
+                    "package": current_pkg,
+                    "component": current_name,
+                    "enabled": current_enabled if current_enabled is not None else True
+                })
+            i -= 1
+        i += 1
+        
+    disabled_count = 0
+    failed_count = 0
+    for rx in receivers:
+        category = classify_package(rx["package"])
+        if category == "Safe to Disable" and rx["enabled"]:
+            comp_path = f"{rx['package']}/{rx['component']}"
+            print(f"  ❄️ Disabling autostart component: {comp_path}...")
+            stdout, stderr, code = run_adb(["shell", "pm disable", comp_path])
+            if code == 0 and ("new state" in stdout.lower() or "disabled" in stdout.lower()):
+                disabled_count += 1
+            else:
+                failed_count += 1
+                
+    print("\n------------------------------------------------------------")
+    print(f"\033[1;32m✅ Safe Optimization Complete!\033[0m")
+    print(f"  • Restricted standby buckets for {restricted_count} packages.")
+    print(f"  • Disabled autostart receivers for {disabled_count} components.")
+    if failed_count > 0:
+        print(f"  • {failed_count} components could not be disabled due to Android Security restrictions (Safe, as we restricted their standby buckets instead).")
+    print("------------------------------------------------------------\n")
+
 # Main Dashboard menu
 def dashboard():
     while True:
         print("\n\033[1;35m============================================================\033[0m")
         print("          \033[1mTER OS: ADB APP MANAGER & OPTIMIZER\033[0m")
         print("\033[1;35m============================================================\033[0m")
-        print(" [1] Freeze App (Disable package completely)")
-        print(" [2] Unfreeze App (Re-enable package)")
-        print(" [3] Standby Tuner (Manage standby buckets)")
-        print(" [4] Autostart Controller (Manage boot-start receivers)")
-        print(" [5] Export App APK (Extract base APK file)")
-        print(" [6] List Installed Third-Party Apps")
+        print(" [1] Auto-Optimize (Safe Battery Saving)")
+        print(" [2] Freeze App (Disable package completely)")
+        print(" [3] Unfreeze App (Re-enable package)")
+        print(" [4] Standby Tuner (Manage standby buckets)")
+        print(" [5] Autostart Controller (Manage boot-start receivers)")
+        print(" [6] Export App APK (Extract base APK file)")
+        print(" [7] List Installed Third-Party Apps")
         print(" [q] Quit")
-        choice = input("\n👉 Selection (1-6 or q): ").strip()
+        choice = input("\n👉 Selection (1-7 or q): ").strip()
         
         if choice.lower() == 'q' or not choice:
             break
         elif choice == "1":
+            auto_optimize()
+        elif choice == "2":
             pkg = search_package_interactive("Enter package to FREEZE: ")
             if pkg:
                 freeze_app(pkg)
-        elif choice == "2":
+        elif choice == "3":
             # For unfreeze, we list all disabled apps
             print("\n⏳ Finding frozen apps...")
             out, _, _ = run_adb(["shell", "pm list packages -d -3"])
@@ -389,15 +482,15 @@ def dashboard():
             except ValueError:
                 pass
             print("❌ Invalid selection.")
-        elif choice == "3":
-            standby_menu()
         elif choice == "4":
-            autostart_menu()
+            standby_menu()
         elif choice == "5":
+            autostart_menu()
+        elif choice == "6":
             pkg = search_package_interactive("Enter package to EXPORT: ")
             if pkg:
                 export_apk(pkg)
-        elif choice == "6":
+        elif choice == "7":
             print("\n📦 Installed Third-Party Packages:")
             packages = get_third_party_packages()
             for pkg in packages:
@@ -410,6 +503,7 @@ def print_help():
     print("\033[1mTER OS: Consolidated ADB Management Utility\033[0m")
     print("Usage:")
     print("  adb-manage                  Open interactive dashboard menu")
+    print("  adb-manage -o/--optimize     Run safe auto-optimization (autostart & standby)")
     print("  adb-manage -f/--freeze <pkg>  Disable/Freeze an app completely")
     print("  adb-manage -u/--unfreeze <pkg> Re-enable/Unfreeze an app")
     print("  adb-manage -s/--standby <pkg> [restricted|active]  Tune app standby bucket")
@@ -432,6 +526,8 @@ def cli_main():
     cmd = args[0]
     if cmd in ["-h", "--help"]:
         print_help()
+    elif cmd in ["-o", "--optimize"]:
+        auto_optimize()
     elif cmd in ["-f", "--freeze"]:
         if len(args) < 2:
             print("❌ Error: Missing package name.")
