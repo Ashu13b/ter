@@ -15,8 +15,8 @@ welcome() {
     echo -e "  ${C_DIM}IP:${C_RESET} ${C_GREEN}${ip}${C_RESET}  ${C_DIM}|  Time:${C_RESET} ${C_BLUE}${dt}${C_RESET}  ${C_DIM}|  Apps:${C_RESET} ${C_CYAN}${app_count}${C_RESET}"
     echo -e "${C_MAGENTA}────────────────────────────────────────────────────────────${C_RESET}"
     
-    local tips=("apps list → View registered apps." "adbcon → Connect ADB wirelessly." "scan net → Find devices.")
-    echo -e "  ${C_YELLOW}💡${C_RESET}  ${C_DIM}${tips[$(( RANDOM % 3 ))]}${C_RESET}"
+    local tips=("apps list → View registered apps." "adbcon → Connect ADB wirelessly." "scan net → Find devices." "termux-bg status → Audit background stability.")
+    echo -e "  ${C_YELLOW}💡${C_RESET}  ${C_DIM}${tips[$(( RANDOM % 4 ))]}${C_RESET}"
     echo -e "${C_MAGENTA}────────────────────────────────────────────────────────────${C_RESET}"
     
     echo -e "  ${C_BOLD}${C_BLUE}▰▰▰ SYSTEM OPERATIONS${C_RESET}"
@@ -24,6 +24,7 @@ welcome() {
     printf "  ${C_CYAN}%-10s${C_RESET} [%s] Back     [%s] Up 2     [%s] Home\\n" "NAV" ".." "..." "h"
     printf "  ${C_CYAN}%-10s${C_RESET} [%s] Workspace[%s] Download [%s] Storage\\n" "DIRS" "ws" "dl" "storage"
     printf "  ${C_CYAN}%-10s${C_RESET} [%s] ADB con  [%s] Net Scan [%s] App List\\n" "TOOLS" "adbcon" "scan net" "apps list"
+    printf "  ${C_CYAN}%-10s${C_RESET} [%s] BG Audit [%s] BG Fix    [%s] Task List\\n" "STABILITY" "termux-bg status" "termux-bg fix" "termux-bg list"
     
     # Load app welcome contributions
     local has_apps=0
