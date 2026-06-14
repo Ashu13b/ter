@@ -4,7 +4,7 @@ adbcon() {
     local LOCAL_LOOPBACK="127.0.0.1:5555"
 
     # --- FLAG HANDLING SECTION ---
-    if [ "$1" == "-d" ] || [ "$1" == "--exit" ] || [ "$1" == "disconnect" ]; then
+    if [[ "$1" == "-d" ]] || [[ "$1" == "--exit" ]] || [[ "$1" == "disconnect" ]]; then
         echo "========================================"
         echo "       ADB CLEANUP & DISCONNECT         "
         echo "========================================"
@@ -50,7 +50,7 @@ adbcon() {
     # Setup common fallback IP detection
     local DETECTED_IP=$(echo "$IPS" | head -n 1)
 
-    if [ "$connect_choice" == "1" ]; then
+    if [[ "$connect_choice" == "1" ]]; then
         echo "ℹ️  Prerequisites for automatic connection:"
         echo "  1. Ensure your phone is connected to any Wi-Fi or Hotspot."
         echo "  2. Go to Settings -> Developer Options -> Wireless Debugging and turn it ON."
