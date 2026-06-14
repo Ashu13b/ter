@@ -28,6 +28,14 @@ if [ -f "$REPO_DIR/termux.properties" ]; then
     success "Keyboard layout deployed."
 fi
 
+if [ -f "$REPO_DIR/motd" ]; then
+    MOTD_TARGET="/data/data/com.termux/files/usr/etc/motd"
+    if [ -w "$MOTD_TARGET" ]; then
+        cp "$REPO_DIR/motd" "$MOTD_TARGET"
+        success "System MOTD updated."
+    fi
+fi
+
 LOADER_MARKER="SHELL.D Modular Loader"
 if ! grep -q "$LOADER_MARKER" "$HOME/.bashrc" 2>/dev/null; then
     info "Adding module loader to .bashrc..."
