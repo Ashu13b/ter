@@ -144,11 +144,14 @@ adb-audit-sideloads() {
 
     if [ -n "$audit_list" ]; then
         echo -e "${C_YELLOW}⚠️  Detected apps sideloaded via ADB or manual installation files:${C_RESET}"
-        echo "$audit_list" | while read -r line; do
-            local pkg; pkg=$(echo "$line" | awk '{print $1}' | cut -d':' -f2)
-            local inst; inst=$(echo "$line" | awk '{print $2}' | cut -d'=' -f2)
-            echo -e "  • ${C_RED}${pkg}${C_RESET} (Installer: ${C_DIM}${inst:-Unknown}${C_RESET})"
-        done
+        echo "$audit_list" | awk '{
+            split($1, a, ":");
+            pkg = a[2];
+            split($2, b, "=");
+            inst = b[2];
+            if (inst == "") inst = "Unknown";
+            print "  • \033[31m" pkg "\033[0m (Installer: \033[2m" inst "\033[0m)"
+        }'
         echo -e "\n${C_DIM}Note: Pre-bundled system components or manually sideloaded apps show 'null' or 'Unknown'.${C_RESET}"
     else
         echo -e "${C_GREEN}✔ No sideloaded third-party apps detected. All apps installed from official stores.${C_RESET}"
