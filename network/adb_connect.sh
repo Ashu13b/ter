@@ -40,7 +40,8 @@ adbcon() {
     echo "Select connection method:"
     echo " [1] Automatic Scan (Fast port discovery - no typing)"
     echo " [2] Manual Port (Enter port shown on phone screen)"
-    read -p "👉 Choose option (1 or 2, default is 1): " connect_choice
+    echo -n "👉 Choose option (1 or 2, default is 1): "
+    read connect_choice
     connect_choice=${connect_choice:-1}
     echo "----------------------------------------"
 
@@ -110,12 +111,15 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=250) as e:
 
     # Manual connection flow (either chosen directly, or fallback from failed scan)
     if [ -z "$DETECTED_IP" ]; then
-        read -p "👉 Please manually enter your phone's IP address: " DETECTED_IP
+        echo -n "👉 Please manually enter your phone's IP address: "
+        read DETECTED_IP
     else
         echo "📱 Detected IP address: $DETECTED_IP"
-        read -p "👉 Is this correct? (Y/n): " confirm_ip
+        echo -n "👉 Is this correct? (Y/n): "
+        read confirm_ip
         if [[ "$confirm_ip" =~ ^[Nn]$ ]]; then
-            read -p "👉 Enter the correct IP address: " DETECTED_IP
+            echo -n "👉 Enter the correct IP address: "
+            read DETECTED_IP
         fi
     fi
 
@@ -125,7 +129,8 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=250) as e:
     fi
 
     echo "----------------------------------------"
-    read -p "❓ Do you need to PAIR this device first? (y/N): " pair_choice
+    echo -n "❓ Do you need to PAIR this device first? (y/N): "
+    read pair_choice
     if [[ "$pair_choice" =~ ^[Yy]$ ]]; then
         echo "----------------------------------------"
         echo "1. Go to Settings -> Developer Options -> Wireless Debugging."
@@ -133,8 +138,10 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=250) as e:
         echo "----------------------------------------"
         local pair_port
         local pair_code
-        read -p "👉 Enter the 5-digit PAIRING PORT: " pair_port
-        read -p "👉 Enter the 6-digit PAIRING CODE: " pair_code
+        echo -n "👉 Enter the 5-digit PAIRING PORT: "
+        read pair_port
+        echo -n "👉 Enter the 6-digit PAIRING CODE: "
+        read pair_code
         
         if [ -z "$pair_port" ] || [ -z "$pair_code" ]; then
             echo "❌ Pairing cancelled (missing details)."
@@ -147,7 +154,8 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=250) as e:
     fi
 
     local current_port
-    read -p "👉 Enter the CONNECTION PORT (shown under 'IP address & Port'): " current_port
+    echo -n "👉 Enter the CONNECTION PORT (shown under 'IP address & Port'): "
+    read current_port
 
     if [ -z "$current_port" ]; then
         echo "❌ Connection cancelled. Missing port input."
