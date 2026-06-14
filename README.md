@@ -29,6 +29,12 @@ All modular scripts are automatically sourced on terminal startup. They are orga
   * `kocr-app` / `kocr-res` — Jump shortcuts to Kaggle OCR project.
 * **`welcome.sh`**: Renders the startup welcome dashboard and Operations Matrix.
 * **`tab_title.sh`**: Custom cross-shell compatible tab naming function.
+* **`adb_utils.sh`**: High-value ADB integration commands:
+  * `adb-sysinfo` — Displays battery, temp, device metrics, and CPU usage.
+  * `adb-screengrab` — Captures screenshot, pulls it to path, and deletes tmp on phone.
+  * `adb-appmanage` — Menu-driven application freezing/lifecycle management.
+  * `adb-install <apk>` — Silently installs an APK from your workspace.
+  * `adb-logcat [filter]` — Streams system logs with optional search filtering.
 
 ---
 
