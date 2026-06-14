@@ -42,6 +42,9 @@ All modular scripts are automatically sourced on terminal startup. They are orga
       * `-p, --permissions`  Scan granted dangerous privacy permissions (categorized SMS, Microphone, Camera, GPS, etc.)
       * `-y, --system`       Scan active Device Administrators & Accessibility Services
       * `-i, --live`         Scan active Microphone, Camera, or Location access right now
+  * `adb-export [pkg]` — Extract and pull the base APK file of any installed app to the local directory.
+  * `adb-autostart` — Audits and toggles app boot components (`BOOT_COMPLETED` receivers) to prevent startup battery drain.
+  * `adb-standby` — Tune app standby buckets to aggressively force power-draining background apps into restricted standby.
 
 ---
 

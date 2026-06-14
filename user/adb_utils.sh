@@ -631,3 +631,254 @@ if __name__ == '__main__':
     run_all_audits()
 EOF
 }
+
+# ── 7. APK Extractor & Exporter ──
+adb-export() {
+    if ! adb devices | grep -q "127.0.0.1:5555[[:space:]]*device"; then
+        echo -e "${C_RED}❌ ADB loopback is offline. Run adbcon first.${C_RESET}"
+        return 1
+    fi
+
+    local pkg="$1"
+    if [ -z "$pkg" ]; then
+        echo -n "🔍 Enter package search query (e.g. whatsapp): "
+        read query
+        if [ -z "$query" ]; then
+            echo -e "${C_RED}❌ Query cannot be empty.${C_RESET}"
+            return 1
+        fi
+        
+        echo -e "\n📦 Matching packages:"
+        local matches; matches=$(adb -s 127.0.0.1:5555 shell pm list packages -3 | grep -i "$query" | tr -d '\r' | cut -d':' -f2 | sort)
+        if [ -z "$matches" ]; then
+            echo -e "${C_RED}❌ No matching third-party packages found.${C_RESET}"
+            return 1
+        fi
+        
+        local options=()
+        local i=1
+        while read -r line; do
+            options+=("$line")
+            echo " [$i] $line"
+            i=$((i+1))
+        done <<< "$matches"
+        
+        echo -n "👉 Select app to export (1-$((i-1))): "
+        read choice
+        if ! [[ "$choice" =~ ^[0-9]+$ ]] || [ "$choice" -lt 1 ] || [ "$choice" -ge "$i" ]; then
+            echo -e "${C_RED}❌ Invalid choice.${C_RESET}"
+            return 1
+        fi
+        pkg="${options[$((choice-1))]}"
+    fi
+
+    echo -e "\n🔍 Locating APK for ${C_YELLOW}$pkg${C_RESET}..."
+    local paths; paths=$(adb -s 127.0.0.1:5555 shell pm path "$pkg" | tr -d '\r')
+    if [ -z "$paths" ]; then
+        echo -e "${C_RED}❌ Could not find package path for $pkg.${C_RESET}"
+        return 1
+    fi
+
+    local base_path; base_path=$(echo "$paths" | grep "base.apk" | head -n 1 | cut -d':' -f2)
+    if [ -z "$base_path" ]; then
+        base_path=$(echo "$paths" | head -n 1 | cut -d':' -f2)
+    fi
+
+    local outfile="${pkg}.apk"
+    echo -e "📥 Pulling APK from: ${C_DIM}$base_path${C_RESET}"
+    adb -s 127.0.0.1:5555 pull "$base_path" "./$outfile"
+    
+    if [ $? -eq 0 ]; then
+        echo -e "🎉 Successfully exported APK as: ${C_GREEN}$outfile${C_RESET} in current directory."
+    else
+        echo -e "${C_RED}❌ Failed to pull APK.${C_RESET}"
+    fi
+}
+
+# ── 8. Boot Component Autostart Controller ──
+adb-autostart() {
+    if ! adb devices | grep -q "127.0.0.1:5555[[:space:]]*device"; then
+        echo -e "${C_RED}❌ ADB loopback is offline. Run adbcon first.${C_RESET}"
+        return 1
+    fi
+
+    echo -e "\n${C_BOLD}${C_CYAN}─── AUTOSTART RECEIVER MANAGER ───${C_RESET}"
+    echo -e "${C_DIM}Scanning for apps that trigger on phone boot...${C_RESET}"
+    
+    python3 - << 'EOF'
+import subprocess, re, sys
+
+def run_adb(args):
+    cmd = ["adb", "-s", "127.0.0.1:5555"] + args
+    try:
+        return subprocess.check_output(cmd, stderr=subprocess.DEVNULL).decode("utf-8", errors="ignore").replace('\r', '')
+    except Exception:
+        return ""
+
+def get_third_party_packages():
+    out = run_adb(["shell", "pm list packages -3"])
+    packages = set()
+    for line in out.splitlines():
+        if line.strip().startswith("package:"):
+            packages.add(line.strip().split(':')[1])
+    return packages
+
+out = run_adb(["shell", "pm query-receivers -a android.intent.action.BOOT_COMPLETED"])
+third_party_names = get_third_party_packages()
+
+receivers = []
+lines = out.splitlines()
+i = 0
+while i < len(lines):
+    line = lines[i]
+    if "Receiver #" in line:
+        current_pkg = None
+        current_name = None
+        current_enabled = None
+        i += 1
+        while i < len(lines) and "Receiver #" not in lines[i]:
+            subline = lines[i].strip()
+            if subline.startswith("name="):
+                match = re.search(r"name=(\S+)", subline)
+                if match:
+                    current_name = match.group(1)
+            elif subline.startswith("packageName="):
+                match = re.search(r"packageName=(\S+)", subline)
+                if match:
+                    current_pkg = match.group(1)
+            elif subline.startswith("enabled="):
+                match = re.search(r"enabled=(true|false)", subline)
+                if match:
+                    current_enabled = match.group(1) == "true"
+            i += 1
+        if current_pkg in third_party_names and current_name:
+            receivers.append({
+                "package": current_pkg,
+                "component": current_name,
+                "enabled": current_enabled if current_enabled is not None else True
+            })
+        i -= 1
+    i += 1
+
+if not receivers:
+    print("✔ No third-party boot receivers detected.")
+    sys.exit(0)
+
+while True:
+    print(f"\n📦 Detected Boot Components (Autostart):")
+    for idx, rx in enumerate(receivers, 1):
+        status = "\033[1;32m[ENABLED]\033[0m" if rx["enabled"] else "\033[1;31m[DISABLED]\033[0m"
+        print(f"  [{idx}] {rx['package']}\n      ↳ {rx['component']} {status}")
+        
+    choice = input("\n👉 Enter component number to TOGGLE state, or 'q' to quit: ").strip()
+    if choice.lower() == 'q' or not choice:
+        break
+        
+    try:
+        idx = int(choice) - 1
+        if idx < 0 or idx >= len(receivers):
+            print("❌ Invalid number.")
+            continue
+    except ValueError:
+        print("❌ Invalid input.")
+        continue
+        
+    rx = receivers[idx]
+    comp_path = f"{rx['package']}/{rx['component']}"
+    if rx["enabled"]:
+        print(f"❄️ Disabling autostart component {comp_path}...")
+        res = run_adb(["shell", "pm disable", comp_path])
+        if "new state" in res.lower() or "disabled" in res.lower() or not res.strip():
+            rx["enabled"] = False
+            print("✅ Disabled.")
+        else:
+            print(f"❌ Failed to disable: {res.strip()}")
+    else:
+        print(f"🔥 Enabling autostart component {comp_path}...")
+        res = run_adb(["shell", "pm enable", comp_path])
+        if "new state" in res.lower() or "enabled" in res.lower() or not res.strip():
+            rx["enabled"] = True
+            print("✅ Enabled.")
+        else:
+            print(f"❌ Failed to enable: {res.strip()}")
+EOF
+}
+
+# ── 9. Standby Bucket Controller ──
+adb-standby() {
+    if ! adb devices | grep -q "127.0.0.1:5555[[:space:]]*device"; then
+        echo -e "${C_RED}❌ ADB loopback is offline. Run adbcon first.${C_RESET}"
+        return 1
+    fi
+    
+    echo -e "\n${C_BOLD}${C_CYAN}─── APP STANDBY BUCKET TUNER ───${C_RESET}"
+    echo " [1] List current standby buckets for all third-party apps"
+    echo " [2] Restrict an app (Force to 'restricted' bucket for maximum battery saving)"
+    echo " [3] Unrestrict an app (Set to 'active' bucket)"
+    echo -n "👉 Selection (1-3): "
+    read choice
+    
+    case "$choice" in
+        1)
+            echo -e "\n⏳ Gathering standby buckets... (This may take a moment)"
+            python3 - << 'EOF'
+import subprocess, sys
+def run_adb(args):
+    cmd = ["adb", "-s", "127.0.0.1:5555"] + args
+    try:
+        return subprocess.check_output(cmd, stderr=subprocess.DEVNULL).decode("utf-8", errors="ignore").replace('\r', '')
+    except Exception:
+        return ""
+
+out_pkg = run_adb(["shell", "pm list packages -3"])
+packages = []
+for line in out_pkg.splitlines():
+    if line.strip().startswith("package:"):
+        packages.append(line.strip().split(':')[1])
+
+buckets = {}
+for pkg in sorted(packages):
+    bucket_out = run_adb(["shell", "am get-standby-bucket", pkg]).strip()
+    name = "unknown"
+    if "10" in bucket_out or "active" in bucket_out.lower():
+        name = "Active (No restrictions)"
+    elif "20" in bucket_out or "working" in bucket_out.lower():
+        name = "Working Set (Mild restrictions)"
+    elif "30" in bucket_out or "frequent" in bucket_out.lower():
+        name = "Frequent (Moderate restrictions)"
+    elif "40" in bucket_out or "rare" in bucket_out.lower():
+        name = "Rare (Strong restrictions)"
+    elif "45" in bucket_out or "restricted" in bucket_out.lower():
+        name = "\033[1;31mRestricted (Max battery saving)\033[0m"
+    buckets[pkg] = name
+
+print("\n📦 Third-Party App Standby Buckets:")
+for pkg, bucket in buckets.items():
+    print(f"  • \033[1m{pkg:<45}\033[0m : {bucket}")
+print()
+EOF
+            ;;
+        2)
+            echo -n "👉 Enter package name to restrict: "
+            read pkg
+            if [ -n "$pkg" ]; then
+                echo -e "⚡ Restricting package $pkg..."
+                adb -s 127.0.0.1:5555 shell am set-standby-bucket "$pkg" restricted
+                echo -e "✅ Package standby bucket set to ${C_RED}restricted${C_RESET}."
+            fi
+            ;;
+        3)
+            echo -n "👉 Enter package name to unrestrict: "
+            read pkg
+            if [ -n "$pkg" ]; then
+                echo -e "🔥 Unrestricting package $pkg..."
+                adb -s 127.0.0.1:5555 shell am set-standby-bucket "$pkg" active
+                echo -e "✅ Package standby bucket set to ${C_GREEN}active${C_RESET}."
+            fi
+            ;;
+        *)
+            echo "❌ Invalid choice."
+            ;;
+    esac
+    echo ""
+}
