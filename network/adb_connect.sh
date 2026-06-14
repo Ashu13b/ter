@@ -27,7 +27,7 @@ adbcon() {
     echo "Checking persistent background channel..."
     adb connect $LOCAL_LOOPBACK > /dev/null 2>&1
 
-    if adb devices | grep -q "$LOCAL_LOOPBACK[[:space:]]*device"; then
+    if adb devices | grep -q "${LOCAL_LOOPBACK}[[:space:]]*device"; then
         echo "🎉 Connection alive! Bypassing Wi-Fi network completely."
         echo "Entering shell..."
         echo "----------------------------------------"
@@ -80,7 +80,7 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=250) as e:
                     adb connect "$ip:$port" > /dev/null 2>&1
                     sleep 0.5
                     
-                    if adb devices | grep -q "$ip:$port[[:space:]]*device"; then
+                    if adb devices | grep -q "${ip}:${port}[[:space:]]*device"; then
                         echo "🎉 Connection successful! Connected to $ip:$port"
                         echo "🔄 Routing ADB to local background port 5555..."
                         adb -s "$ip:$port" tcpip 5555 > /dev/null 2>&1
@@ -158,7 +158,7 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=250) as e:
     echo "Connecting to $DETECTED_IP:$current_port..."
     adb connect "$DETECTED_IP:$current_port"
 
-    if adb devices | grep -q "$DETECTED_IP:$current_port[[:space:]]*device"; then
+    if adb devices | grep -q "${DETECTED_IP}:${current_port}[[:space:]]*device"; then
         echo "🔄 Success! Routing ADB to local background port 5555..."
         adb tcpip 5555
         sleep 1.5
