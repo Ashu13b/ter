@@ -18,19 +18,19 @@ sysinfo() {
     local temp_c; temp_c=$(python3 -c "print($temp / 10.0)" 2>/dev/null || echo "?")
     local status_code; status_code=$(echo "$battery_info" | grep "status:" | awk '{print $2}')
     
-    local status="Unknown"
+    local batt_status="Unknown"
     case "$status_code" in
-        2) status="Charging" ;;
-        3) status="Discharging" ;;
-        4) status="Not Charging" ;;
-        5) status="Full" ;;
+        2) batt_status="Charging" ;;
+        3) batt_status="Discharging" ;;
+        4) batt_status="Not Charging" ;;
+        5) batt_status="Full" ;;
     esac
     
     # Parse CPU top processes
     local cpu_load; cpu_load=$(adb -s 127.0.0.1:5555 shell top -n 1 -m 5 2>/dev/null | grep -E "%" | head -n 5)
 
     echo -e "  ${C_BOLD}Model:${C_RESET} ${C_YELLOW}$model${C_RESET} (Android $android_ver)"
-    echo -e "  ${C_BOLD}Battery:${C_RESET} ${C_GREEN}${level}%${C_RESET} | Temp: ${C_BLUE}${temp_c}°C${C_RESET} | Status: ${C_CYAN}$status${C_RESET}"
+    echo -e "  ${C_BOLD}Battery:${C_RESET} ${C_GREEN}${level}%${C_RESET} | Temp: ${C_BLUE}${temp_c}°C${C_RESET} | Status: ${C_CYAN}$batt_status${C_RESET}"
     echo -e "\n  ${C_BOLD}${C_MAGENTA}Top CPU Consuming Processes:${C_RESET}"
     if [ -n "$cpu_load" ]; then
         echo "$cpu_load" | sed 's/^/  /'
