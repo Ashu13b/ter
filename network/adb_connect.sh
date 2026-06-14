@@ -31,7 +31,7 @@ adbcon() {
         echo "🎉 Connection alive! Bypassing Wi-Fi network completely."
         echo "Entering shell..."
         echo "----------------------------------------"
-        adb shell
+        adb -s "$LOCAL_LOOPBACK" shell
         return 0
     fi
 
@@ -94,7 +94,7 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=250) as e:
                         if adb devices | grep -q "$LOCAL_LOOPBACK[[:space:]]*device"; then
                             echo "🚀 Offline loopback activated! Dropping into shell..."
                             echo "========================================"
-                            adb shell
+                            adb -s "$LOCAL_LOOPBACK" shell
                             return 0
                         fi
                     else
@@ -168,7 +168,7 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=250) as e:
         
         echo "🚀 Everything set up! Dropping into shell..."
         echo "========================================"
-        adb shell
+        adb -s "$LOCAL_LOOPBACK" shell
     else
         echo "❌ Connection failed."
         echo "Please verify that the Port matches the screen exactly and your phone trusts Termux."
