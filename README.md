@@ -34,8 +34,10 @@ All modular scripts are automatically sourced on terminal startup. They are orga
   * `adb-screengrab` — Captures screenshot, pulls it to path, and deletes tmp on phone.
   * `adb-appmanage` — Menu-driven application freezing/lifecycle management.
   * `adb-logcat [filter]` — Streams system logs with optional search filtering.
-  * `adb-audit-sideloads` — Scans for apps installed via ADB or untrusted sources (sideloaded).
-  * `adb-audit-hidden` — Audits running background apps that lack a launcher app icon.
+  * `adb-audit [section]` — Runs the full Device Security & Privacy Audit Engine.
+    * Options: `sideloads` (stores audit), `hidden` (iconless apps), `permissions` (mic/cam/SMS), `system` (device admins).
+  * `adb-audit-sideloads` — Alias for `adb-audit sideloads`.
+  * `adb-audit-hidden` — Alias for `adb-audit hidden`.
 
 ---
 
