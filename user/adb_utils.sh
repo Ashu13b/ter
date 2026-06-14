@@ -1,7 +1,7 @@
 # ── TER OS: ADB-Powered System Utilities ──
 
 # ── 1. Device System Metrics ──
-sysinfo() {
+adb-sysinfo() {
     if ! adb devices | grep -q "127.0.0.1:5555[[:space:]]*device"; then
         echo -e "${C_RED}❌ ADB loopback is offline. Run adbcon first.${C_RESET}"
         return 1
@@ -41,7 +41,7 @@ sysinfo() {
 }
 
 # ── 2. Instantly Grab Screenshot ──
-screen-grab() {
+adb-screengrab() {
     if ! adb devices | grep -q "127.0.0.1:5555[[:space:]]*device"; then
         echo -e "${C_RED}❌ ADB loopback is offline. Run adbcon first.${C_RESET}"
         return 1
@@ -64,7 +64,7 @@ screen-grab() {
 }
 
 # ── 3. App Lifecycle Manager (Freeze/Unfreeze) ──
-app-manage() {
+adb-appmanage() {
     if ! adb devices | grep -q "127.0.0.1:5555[[:space:]]*device"; then
         echo -e "${C_RED}❌ ADB loopback is offline. Run adbcon first.${C_RESET}"
         return 1
@@ -105,4 +105,37 @@ app-manage() {
             ;;
     esac
     echo ""
+}
+
+# ── 4. Silent Background APK Installer ──
+adb-install() {
+    if ! adb devices | grep -q "127.0.0.1:5555[[:space:]]*device"; then
+        echo -e "${C_RED}❌ ADB loopback is offline. Run adbcon first.${C_RESET}"
+        return 1
+    fi
+    if [ -z "$1" ]; then
+        echo -e "Usage: adb-install <path-to-apk-file>"
+        return 1
+    fi
+    if [ ! -f "$1" ]; then
+        echo -e "${C_RED}❌ File not found: $1${C_RESET}"
+        return 1
+    fi
+    echo -e "📦 Installing APK: $1..."
+    adb -s 127.0.0.1:5555 install -r "$1"
+}
+
+# ── 5. System Logcat Streamer & Filter ──
+adb-logcat() {
+    if ! adb devices | grep -q "127.0.0.1:5555[[:space:]]*device"; then
+        echo -e "${C_RED}❌ ADB loopback is offline. Run adbcon first.${C_RESET}"
+        return 1
+    fi
+    if [ -n "$1" ]; then
+        echo -e "📋 Streaming system logs for filter: ${C_YELLOW}$1${C_RESET} (Press Ctrl+C to exit)..."
+        adb -s 127.0.0.1:5555 logcat | grep -i "$1"
+    else
+        echo -e "📋 Streaming system logs (Press Ctrl+C to exit)..."
+        adb -s 127.0.0.1:5555 logcat
+    fi
 }
