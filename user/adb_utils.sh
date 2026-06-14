@@ -158,3 +158,84 @@ adb-audit-sideloads() {
     fi
     echo ""
 }
+
+# ── 7. Audit Hidden Background Apps (No Icon + Active) ──
+adb-audit-hidden() {
+    if ! adb devices | grep -q "127.0.0.1:5555[[:space:]]*device"; then
+        echo -e "${C_RED}❌ ADB loopback is offline. Run adbcon first.${C_RESET}"
+        return 1
+    fi
+
+    python3 << 'EOF'
+import subprocess, re
+
+def get_launcher_packages():
+    try:
+        out = subprocess.check_output([
+            "adb", "-s", "127.0.0.1:5555", "shell", 
+            "cmd package query-activities -a android.intent.action.MAIN -c android.intent.category.LAUNCHER"
+        ]).decode("utf-8")
+        packages = set(re.findall(r"packageName=([a-zA-Z0-9._]+)", out))
+        return packages
+    except Exception as e:
+        print(f"Error querying launcher activities: {e}")
+        return set()
+
+def get_third_party_packages():
+    try:
+        out = subprocess.check_output([
+            "adb", "-s", "127.0.0.1:5555", "shell", "pm list packages -3"
+        ]).decode("utf-8")
+        return set(line.strip().split(":")[1] for line in out.splitlines() if line.strip().startswith("package:"))
+    except Exception as e:
+        print(f"Error listing packages: {e}")
+        return set()
+
+def get_running_processes():
+    try:
+        out = subprocess.check_output([
+            "adb", "-s", "127.0.0.1:5555", "shell", "ps -A"
+        ]).decode("utf-8")
+        running = set()
+        for line in out.splitlines():
+            parts = line.split()
+            if len(parts) >= 9:
+                uid = parts[0]
+                proc_name = parts[-1]
+                if uid.startswith("u0_a"):
+                    base_pkg = proc_name.split(":")[0]
+                    running.add(base_pkg)
+        return running
+    except Exception as e:
+        print(f"Error listing processes: {e}")
+        return set()
+
+def audit():
+    launcher_pkgs = get_launcher_packages()
+    third_party_pkgs = get_third_party_packages()
+    running_pkgs = get_running_processes()
+    
+    print("\n\033[1;36m─── BACKGROUND ICONLESS APP AUDIT ───\033[0m")
+    print("\033[2mScanning for running background apps with no launcher icons...\033[0m\n")
+    
+    flagged = []
+    for pkg in sorted(running_pkgs):
+        if pkg in third_party_pkgs and pkg not in launcher_pkgs:
+            if pkg == "com.termux":
+                continue
+            flagged.append(pkg)
+            
+    if flagged:
+        print("\033[1;33m⚠️  Detected running background apps with NO launcher app icon:\033[0m")
+        for pkg in flagged:
+            print(f"  • \033[1;31m{pkg}\033[0m")
+        print("\n\033[2mNote: These apps run in the background but do not have an icon in your app drawer.\033[0m")
+        print("\033[2mThis is common for background services (like keyboard engines or plugins), but can also indicate spyware.\033[0m")
+    else:
+        print("\033[1;32m✔ No suspicious iconless background apps detected running.\033[0m")
+    print()
+
+if __name__ == "__main__":
+    audit()
+EOF
+}
