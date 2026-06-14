@@ -8,11 +8,11 @@ sysinfo() {
     fi
     
     echo -e "\n${C_BOLD}${C_CYAN}─── DEVICE SYSTEM METRICS ───${C_RESET}"
-    local model; model=$(adb -s 127.0.0.1:5555 shell getprop ro.product.model)
-    local android_ver; android_ver=$(adb -s 127.0.0.1:5555 shell getprop ro.build.version.release)
+    local model; model=$(adb -s 127.0.0.1:5555 shell getprop ro.product.model | tr -d '\r')
+    local android_ver; android_ver=$(adb -s 127.0.0.1:5555 shell getprop ro.build.version.release | tr -d '\r')
     
     # Parse battery status
-    local battery_info; battery_info=$(adb -s 127.0.0.1:5555 shell dumpsys battery 2>/dev/null)
+    local battery_info; battery_info=$(adb -s 127.0.0.1:5555 shell dumpsys battery 2>/dev/null | tr -d '\r')
     local level; level=$(echo "$battery_info" | grep "level:" | awk '{print $2}')
     local temp; temp=$(echo "$battery_info" | grep "temperature:" | awk '{print $2}')
     local temp_c; temp_c=$(python3 -c "print($temp / 10.0)" 2>/dev/null || echo "?")
@@ -79,7 +79,7 @@ app-manage() {
     case "$choice" in
         1)
             echo -e "\n📦 Installed Third-Party Packages:"
-            adb -s 127.0.0.1:5555 shell pm list packages -3 | cut -d':' -f2 | sort | sed 's/^/  /'
+            adb -s 127.0.0.1:5555 shell pm list packages -3 | tr -d '\r' | cut -d':' -f2 | sort | sed 's/^/  /'
             ;;
         2)
             read -p "👉 Enter package name to freeze: " pkg
