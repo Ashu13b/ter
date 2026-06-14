@@ -74,7 +74,8 @@ app-manage() {
     echo " [1] List installed third-party apps"
     echo " [2] Freeze an app (Disable background battery drain)"
     echo " [3] Unfreeze an app (Re-enable app access)"
-    read -p "👉 Selection (1-3): " choice
+    echo -n "👉 Selection (1-3): "
+    read choice
     
     case "$choice" in
         1)
@@ -82,7 +83,8 @@ app-manage() {
             adb -s 127.0.0.1:5555 shell pm list packages -3 | tr -d '\r' | cut -d':' -f2 | sort | sed 's/^/  /'
             ;;
         2)
-            read -p "👉 Enter package name to freeze: " pkg
+            echo -n "👉 Enter package name to freeze: "
+            read pkg
             if [ -n "$pkg" ]; then
                 echo -e "❄️ Freezing package $pkg..."
                 adb -s 127.0.0.1:5555 shell pm disable-user "$pkg"
@@ -90,7 +92,8 @@ app-manage() {
             fi
             ;;
         3)
-            read -p "👉 Enter package name to unfreeze: " pkg
+            echo -n "👉 Enter package name to unfreeze: "
+            read pkg
             if [ -n "$pkg" ]; then
                 echo -e "🔥 Unfreezing package $pkg..."
                 adb -s 127.0.0.1:5555 shell pm enable "$pkg"
