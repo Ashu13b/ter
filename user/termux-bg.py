@@ -237,19 +237,20 @@ def stop_task(name):
     return True
 
 def print_help():
-    print("\033[1mTERMUX BACKGROUND STABILITY MANAGER\033[0m")
+    print("\033[1;36mTERMUX BACKGROUND STABILITY MANAGER\033[0m")
     print("Usage:")
     print("  termux-bg status             Audit background stability states")
-    print("  termux-bg fix                Optimize settings via ADB (disables phantom killer, exempts standby)")
-    print("  termux-bg run <name> <cmd>   Launch command safely in background with WakeLocks & Notifications")
+    print("  termux-bg fix                Optimize settings via ADB (limits phantom processes to 2048, whitelists battery)")
+    print("  termux-bg run <name> <cmd>   Launch command safely in background with WakeLocks & Logging")
     print("  termux-bg list               List active running background tasks")
     print("  termux-bg stop <name>        Terminate a background task")
-    print("  termux-bg log <name>         Show log path or print tail of logs")
+    print("  termux-bg log <name>         Show log path or tail the logs")
+    print("  termux-bg -h | --help        Show this help documentation")
     print()
 
 def main():
     args = sys.argv[1:]
-    if not args:
+    if not args or args[0] in ["-h", "--help", "help"]:
         print_help()
         sys.exit(0)
         

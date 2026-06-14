@@ -2,6 +2,19 @@
 
 # ── 1. Device System Metrics ──
 adb-sysinfo() {
+    if [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
+        echo -e "${C_BOLD}${C_CYAN}─── DEVICE SYSTEM METRICS HELP ───${C_RESET}"
+        echo "Usage: adb-sysinfo"
+        echo ""
+        echo "Description:"
+        echo "  Queries the connected device via ADB loopback to fetch and display:"
+        echo "    • Product Model name"
+        echo "    • Android OS version"
+        echo "    • Battery Level, Temperature (°C), and Charge Status"
+        echo "    • Top 5 active CPU-consuming processes"
+        return 0
+    fi
+
     if ! adb devices | grep -q "127.0.0.1:5555[[:space:]]*device"; then
         echo -e "${C_RED}❌ ADB loopback is offline. Run adbcon first.${C_RESET}"
         return 1
@@ -42,6 +55,17 @@ adb-sysinfo() {
 
 # ── 2. Instantly Grab Screenshot ──
 adb-screengrab() {
+    if [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
+        echo -e "${C_BOLD}${C_CYAN}─── INSTANT SCREENSHOT GRABBER HELP ───${C_RESET}"
+        echo "Usage: adb-screengrab"
+        echo ""
+        echo "Description:"
+        echo "  Captures the phone's screen, pulls the PNG image to your current"
+        echo "  Termux directory with a timestamped filename, deletes the temp file"
+        echo "  from the phone, and opens it using the default system viewer."
+        return 0
+    fi
+
     if ! adb devices | grep -q "127.0.0.1:5555[[:space:]]*device"; then
         echo -e "${C_RED}❌ ADB loopback is offline. Run adbcon first.${C_RESET}"
         return 1
@@ -65,6 +89,11 @@ adb-screengrab() {
 
 # ── 3. Consolidated App Manager & Optimizer ──
 adb-manage() {
+    if [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
+        python3 "$HOME/.shell.d/user/adb-manage.py" "$@"
+        return 0
+    fi
+
     if ! adb devices | grep -q "127.0.0.1:5555[[:space:]]*device"; then
         echo -e "${C_RED}❌ ADB loopback is offline. Run adbcon first.${C_RESET}"
         return 1
@@ -82,6 +111,17 @@ adb-manage() {
 
 # ── 5. System Logcat Streamer & Filter ──
 adb-logcat() {
+    if [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
+        echo -e "${C_BOLD}${C_CYAN}─── SYSTEM LOGCAT STREAMER HELP ───${C_RESET}"
+        echo "Usage: adb-logcat [filter_query]"
+        echo ""
+        echo "Description:"
+        echo "  Streams Android system logs (logcat) in real time."
+        echo "  If a filter query is specified, it streams only log lines matching"
+        echo "  that string (case-insensitive filter)."
+        return 0
+    fi
+
     if ! adb devices | grep -q "127.0.0.1:5555[[:space:]]*device"; then
         echo -e "${C_RED}❌ ADB loopback is offline. Run adbcon first.${C_RESET}"
         return 1
@@ -97,11 +137,6 @@ adb-logcat() {
 
 # ── 6. Master Security & Privacy Audit Engine ──
 adb-audit() {
-    if ! adb devices | grep -q "127.0.0.1:5555[[:space:]]*device"; then
-        echo -e "${C_RED}❌ ADB loopback is offline. Run adbcon first.${C_RESET}"
-        return 1
-    fi
-    
     if [[ -z "$1" ]] || [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
         echo -e "${C_BOLD}${C_CYAN}─── TER OS: ADB-Powered Security Audit ───${C_RESET}"
         echo -e "Usage: adb-audit [option]\n"
@@ -114,6 +149,11 @@ adb-audit() {
         echo -e "  -i, --live         Scan active Microphone, Camera, or Location access right now"
         echo ""
         return 0
+    fi
+
+    if ! adb devices | grep -q "127.0.0.1:5555[[:space:]]*device"; then
+        echo -e "${C_RED}❌ ADB loopback is offline. Run adbcon first.${C_RESET}"
+        return 1
     fi
     
     local key="$1"

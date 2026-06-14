@@ -429,13 +429,43 @@ def audit_live_access():
         print(f"{C_GREEN}✔ No active Microphone, Camera, or Location access detected.{C_RESET}")
     print()
 
+def print_help():
+    print(f"{C_BOLD}{C_CYAN}─── TER OS: ADB-Powered Security Audit ───{C_RESET}")
+    print("Usage: adb-audit [option]\n")
+    print("Options:")
+    print("  -a, --all          Run full device security & privacy audit")
+    print("  -s, --sideloads    Scan for sideloaded/ADB-installed apps")
+    print("  -d, --hidden       Scan for running iconless background apps")
+    print("  -p, --permissions  Scan granted dangerous privacy permissions (categorized & chunked)")
+    print("  -y, --system       Scan active Device Administrators & Accessibility Services")
+    print("  -i, --live         Scan active Microphone, Camera, or Location access right now")
+    print("  -h, --help         Show this help information")
+    print()
+
 def run_all_audits():
+    arg = sys.argv[1] if len(sys.argv) > 1 else "all"
+    if arg in ["-h", "--help", "help"]:
+        print_help()
+        sys.exit(0)
+
+    if arg in ["-s", "--sideloads"]:
+        arg = "sideloads"
+    elif arg in ["-d", "--hidden"]:
+        arg = "hidden"
+    elif arg in ["-p", "--permissions"]:
+        arg = "permissions"
+    elif arg in ["-y", "--system"]:
+        arg = "system"
+    elif arg in ["-i", "--live"]:
+        arg = "live"
+    elif arg in ["-a", "--all"]:
+        arg = "all"
+
     devices = subprocess.check_output(["adb", "devices"]).decode("utf-8")
     if "127.0.0.1:5555" not in devices:
         print(f"\033[1;31m❌ ADB loopback is offline. Run adbcon first.\033[0m")
-        return
+        sys.exit(1)
         
-    arg = sys.argv[1] if len(sys.argv) > 1 else "all"
     packages = get_third_party_packages()
     
     if arg == "sideloads":
@@ -448,7 +478,7 @@ def run_all_audits():
         audit_system_security()
     elif arg == "live":
         audit_live_access()
-    else:
+    elif arg == "all":
         print(f"\n{C_BOLD}{C_MAGENTA}============================================================{C_RESET}")
         print(f"          {C_BOLD}TER OS: SECURITY AND PRIVACY AUDIT ENGINE{C_RESET}")
         print(f"{C_BOLD}{C_MAGENTA}============================================================{C_RESET}")
@@ -458,6 +488,10 @@ def run_all_audits():
         audit_system_security()
         audit_live_access()
         print(f"\n{C_BOLD}{C_MAGENTA}============================================================{C_RESET}\n")
+    else:
+        print(f"❌ Unknown option: {arg}")
+        print_help()
+        sys.exit(1)
 
 if __name__ == '__main__':
     run_all_audits()

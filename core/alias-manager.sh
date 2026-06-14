@@ -33,11 +33,20 @@ alias_manager_add() {
 }
 
 am() {
+    if [[ -z "$1" ]] || [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]] || [[ "$1" == "help" ]]; then
+        alias_manager_help
+        return 0
+    fi
+
     case "$1" in
         list)   alias_manager_list ;;
         add)    alias_manager_add ;;
         edit)   ${EDITOR:-nano} ~/.shell.d/user/aliases.sh && source ~/.shell.d/user/aliases.sh ;;
         reload) source ~/.shell.d/user/aliases.sh && echo -e "\e[32m✔ Aliases reloaded.\e[0m" ;;
-        *)      alias_manager_help ;;
+        *)
+            echo -e "\e[31m❌ Unknown option: $1\e[0m"
+            alias_manager_help
+            return 1
+            ;;
     esac
 }

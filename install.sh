@@ -11,17 +11,17 @@ TARGET="$HOME/.shell.d"
 echo -e "\n\e[1;35m══ TER: Termux Environment Installer ══\e[0m\n"
 
 info "Creating directory layout..."
-mkdir -p "$TARGET"/{core,network,user,apps}
+mkdir -p "$TARGET"/{core,network,user,apps,docs}
 mkdir -p "$HOME/.termux"
 mkdir -p "$HOME/.local/bin"
 
 info "Deploying shell modules..."
-for dir in core network user; do
+for dir in core network user docs; do
     if [ -d "$REPO_DIR/$dir" ]; then
         cp -r "$REPO_DIR/$dir/"* "$TARGET/$dir/" 2>/dev/null || true
     fi
 done
-success "Shell modules deployed to $TARGET"
+success "Shell modules and docs deployed to $TARGET"
 
 
 if [ -f "$REPO_DIR/termux.properties" ]; then

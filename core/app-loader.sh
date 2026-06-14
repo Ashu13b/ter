@@ -13,6 +13,18 @@ fi
 
 # ── App Registry Command ──
 apps() {
+    if [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]] || [[ "$1" == "help" ]]; then
+        echo -e "${C_BOLD}${C_CYAN}─── TERMUX APP REGISTRY HELP ───${C_RESET}"
+        echo "Usage: apps [list]"
+        echo ""
+        echo "Description:"
+        echo "  Manages and lists registered shell integration applications."
+        echo "  Apps are loaded dynamically from ~/.shell.d/apps/<app_name>/"
+        echo "  containing manifest.json, aliases, autocomplete, and welcome hooks."
+        echo ""
+        return 0
+    fi
+
     case "$1" in
         list|"")
             echo -e "${C_CYAN}Registered Apps:${C_RESET}"
@@ -33,7 +45,9 @@ print(f'  {name:<14} v{ver:<6} [{cmds}]')
             unset _manifest
             ;;
         *)
+            echo -e "${C_RED}❌ Unknown option: $1${C_RESET}"
             echo "Usage: apps [list]"
+            return 1
             ;;
     esac
 }

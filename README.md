@@ -2,6 +2,9 @@
 
 TER is a portable, independent Termux environment configuration repository. It installs a modular shell structure, dynamic welcome dashboard, custom keyboard layout, and a modular app-registration system. It works completely standalone or can be integrated with other projects (like NEXUS) via the registry system.
 
+> [!TIP]
+> For a detailed guide on all custom CLI utilities, usage flags, and offline capabilities, see the [CLI Manual](docs/cli_manual.md).
+
 ---
 
 ## 📂 Directory Structure (`~/.shell.d/`)

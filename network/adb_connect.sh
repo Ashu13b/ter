@@ -4,6 +4,20 @@ adbcon() {
     local LOCAL_LOOPBACK="127.0.0.1:5555"
 
     # --- FLAG HANDLING SECTION ---
+    if [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
+        echo "========================================"
+        echo "    ADB CONNECTION MODULE GUIDE         "
+        echo "========================================"
+        echo "Usage: adbcon [option]"
+        echo ""
+        echo "Options:"
+        echo "  adbcon                     Establish or verify ADB loopback connection"
+        echo "  adbcon -d, --exit          Disconnect and kill the active ADB server safely"
+        echo "  adbcon -h, --help          Show this connection help manual"
+        echo "========================================"
+        return 0
+    fi
+
     if [[ "$1" == "-d" ]] || [[ "$1" == "--exit" ]] || [[ "$1" == "disconnect" ]]; then
         echo "========================================"
         echo "       ADB CLEANUP & DISCONNECT         "

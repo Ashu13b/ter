@@ -513,20 +513,22 @@ def print_help():
     print()
 
 def cli_main():
+    args = sys.argv[1:]
+    if args and args[0] in ["-h", "--help"]:
+        print_help()
+        sys.exit(0)
+
     devices = subprocess.check_output(["adb", "devices"]).decode("utf-8")
     if "127.0.0.1:5555" not in devices:
         print("\033[1;31m❌ ADB loopback is offline. Run adbcon first.\033[0m")
         sys.exit(1)
 
-    args = sys.argv[1:]
     if not args:
         dashboard()
         return
 
     cmd = args[0]
-    if cmd in ["-h", "--help"]:
-        print_help()
-    elif cmd in ["-o", "--optimize"]:
+    if cmd in ["-o", "--optimize"]:
         auto_optimize()
     elif cmd in ["-f", "--freeze"]:
         if len(args) < 2:
