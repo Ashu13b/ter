@@ -64,6 +64,10 @@ def main():
             i += 1
             while i < len(lines) and "Receiver #" not in lines[i]:
                 subline = lines[i].strip()
+                if "ApplicationInfo:" in lines[i]:
+                    while i < len(lines) and "Receiver #" not in lines[i]:
+                        i += 1
+                    break
                 if subline.startswith("name="):
                     match = re.search(r"name=(\S+)", subline)
                     if match:
