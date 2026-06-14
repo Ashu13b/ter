@@ -13,10 +13,10 @@ sysinfo() {
     
     # Parse battery status
     local battery_info; battery_info=$(adb -s 127.0.0.1:5555 shell dumpsys battery 2>/dev/null | tr -d '\r')
-    local level; level=$(echo "$battery_info" | grep "level:" | awk '{print $2}')
-    local temp; temp=$(echo "$battery_info" | grep "temperature:" | awk '{print $2}')
+    local level; level=$(echo "$battery_info" | grep -E "^\s*level:" | awk '{print $2}')
+    local temp; temp=$(echo "$battery_info" | grep -E "^\s*temperature:" | awk '{print $2}')
     local temp_c; temp_c=$(python3 -c "print($temp / 10.0)" 2>/dev/null || echo "?")
-    local status_code; status_code=$(echo "$battery_info" | grep "status:" | awk '{print $2}')
+    local status_code; status_code=$(echo "$battery_info" | grep -E "^\s*status:" | awk '{print $2}')
     
     local batt_status="Unknown"
     case "$status_code" in
