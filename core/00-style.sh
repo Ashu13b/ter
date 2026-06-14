@@ -10,3 +10,9 @@ style_header() {
     [ $pad -lt 0 ] && pad=0
     printf "\n%${pad}s${B_MAGENTA}%s${C_RESET}\n" "" "$label"
 }
+
+style_link() {
+    local url="$1"
+    local text="$2"
+    echo -ne "\e]8;;${url}\e\\\\${text}\e]8;;\e\\\\"
+}

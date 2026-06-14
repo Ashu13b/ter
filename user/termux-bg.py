@@ -3,6 +3,9 @@ import subprocess, sys, re, os, json, time
 TASK_FILE = os.path.expanduser("~/.termux/bg_tasks.json")
 LOG_DIR = os.path.expanduser("~/.termux/bg_logs")
 
+def make_link(url, text):
+    return f"\033]8;;{url}\033\\{text}\033]8;;\033\\"
+
 def run_adb(args):
     cmd = ["adb", "-s", "127.0.0.1:5555"] + args
     try:
@@ -172,7 +175,8 @@ def start_task(name, command):
         
         print(f"🚀 Started background task: \033[1;36m{name}\033[0m")
         print(f"  • PID: {proc.pid}")
-        print(f"  • Log File: {log_path}")
+        clickable_log = make_link(f"file://{log_path}", log_path)
+        print(f"  • Log File: {clickable_log}")
         return True
     except Exception as e:
         print(f"❌ Failed to spawn task: {str(e)}")
@@ -201,7 +205,9 @@ def list_tasks():
         log_str = info['log']
         if len(log_str) > 60:
             log_str = "..." + log_str[-57:]
-        print(f"\033[1;35m│\033[0m    ↳ Log: {log_str:<63}\033[1;35m│\033[0m")
+        padded_log = f"{log_str:<63}"
+        clickable_log = make_link(f"file://{info['log']}", padded_log)
+        print(f"\033[1;35m│\033[0m    ↳ Log: {clickable_log}\033[1;35m│\033[0m")
         
         if idx < len(task_keys):
             print("\033[1;35m├──────────────────────────────────────────────────────────────────────────┤\033[0m")
@@ -279,15 +285,18 @@ def main():
         name = args[1]
         tasks = load_tasks()
         if name in tasks:
-            print(f"Log path: {tasks[name]['log']}")
+            log_p = tasks[name]['log']
+            clickable_log = make_link(f"file://{log_p}", log_p)
+            print(f"Log path: {clickable_log}")
             print(f"Tail logs:")
-            subprocess.run(["tail", "-n", "20", tasks[name]['log']])
+            subprocess.run(["tail", "-n", "20", log_p])
         else:
             if os.path.exists(LOG_DIR):
                 matches = sorted([f for f in os.listdir(LOG_DIR) if f.startswith(name)])
                 if matches:
                     log_path = os.path.join(LOG_DIR, matches[-1])
-                    print(f"Log path: {log_path}")
+                    clickable_log = make_link(f"file://{log_path}", log_path)
+                    print(f"Log path: {clickable_log}")
                     print(f"Tail logs:")
                     subprocess.run(["tail", "-n", "20", log_path])
                     return

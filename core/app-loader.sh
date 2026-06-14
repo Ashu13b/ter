@@ -38,7 +38,9 @@ m = json.load(open('$_manifest'))
 name = m.get('name', 'unknown')
 ver = m.get('version', '?')
 cmds = ', '.join(m.get('commands', []))
-print(f'  {name:<14} v{ver:<6} [{cmds}]')
+padded_name = f'{name:<14}'
+link = f'\033]8;;file://$_manifest\033\\{padded_name}\033]8;;\033\\'
+print(f'  {link} v{ver:<6} [{cmds}]')
 " 2>/dev/null
             done
             [ $found -eq 0 ] && echo "  No apps registered."

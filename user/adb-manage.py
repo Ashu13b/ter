@@ -1,5 +1,8 @@
 import subprocess, sys, re, os
 
+def make_link(url, text):
+    return f"\033]8;;{url}\033\\{text}\033]8;;\033\\"
+
 def run_adb(args):
     cmd = ["adb", "-s", "127.0.0.1:5555"] + args
     try:
@@ -77,7 +80,9 @@ def export_apk(pkg):
     try:
         proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         if proc.returncode == 0:
-            print(f"🎉 Successfully exported APK as: \033[1;32m{outfile}\033[0m in current directory.")
+            outfile_abs = os.path.abspath(outfile)
+            clickable_outfile = make_link(f"file://{outfile_abs}", outfile)
+            print(f"🎉 Successfully exported APK as: \033[1;32m{clickable_outfile}\033[0m in current directory.")
             return True
         else:
             print(f"❌ Failed to pull APK: {proc.stderr.strip()}")
