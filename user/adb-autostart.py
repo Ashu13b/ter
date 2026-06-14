@@ -3,12 +3,13 @@ import subprocess, re, sys
 def run_adb(args):
     cmd = ["adb", "-s", "127.0.0.1:5555"] + args
     try:
-        return subprocess.check_output(cmd, stderr=subprocess.DEVNULL).decode("utf-8", errors="ignore").replace('\r', '')
-    except Exception:
-        return ""
+        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=15)
+        return proc.stdout.replace('\r', ''), proc.stderr.replace('\r', ''), proc.returncode
+    except Exception as e:
+        return "", str(e), -1
 
 def get_third_party_packages():
-    out = run_adb(["shell", "pm list packages -3"])
+    out, _, _ = run_adb(["shell", "pm list packages -3"])
     packages = set()
     for line in out.splitlines():
         if line.strip().startswith("package:"):
@@ -48,7 +49,7 @@ def main():
         print("\033[1;31m❌ ADB loopback is offline. Run adbcon first.\033[0m")
         return
 
-    out = run_adb(["shell", "pm query-receivers -a android.intent.action.BOOT_COMPLETED"])
+    out, _, _ = run_adb(["shell", "pm query-receivers -a android.intent.action.BOOT_COMPLETED"])
     third_party_names = get_third_party_packages()
 
     receivers = []
@@ -107,16 +108,22 @@ def main():
         if choice.lower() == 'safe':
             print("\n⚡ Bulk disabling all safe autostart components...")
             disabled_count = 0
+            failed_count = 0
             for rx in receivers:
                 category = classify_package(rx["package"])
                 if category == "Safe to Disable" and rx["enabled"]:
                     comp_path = f"{rx['package']}/{rx['component']}"
                     print(f"  ❄️ Disabling {comp_path}...")
-                    res = run_adb(["shell", "pm disable", comp_path])
-                    if "new state" in res.lower() or "disabled" in res.lower() or not res.strip():
+                    stdout, stderr, code = run_adb(["shell", "pm disable", comp_path])
+                    if code == 0 and ("new state" in stdout.lower() or "disabled" in stdout.lower()):
                         rx["enabled"] = False
                         disabled_count += 1
-            print(f"\n✅ Done! Bulk disabled {disabled_count} safe autostart components.")
+                    else:
+                        failed_count += 1
+                        err = stderr.strip() or stdout.strip() or "Unknown error"
+                        # Print in a dimmer color to not overwhelm the screen but show it failed
+                        print(f"    \033[2m❌ Failed: {err}\033[0m")
+            print(f"\n✅ Done! Bulk disabled {disabled_count} components. ({failed_count} failed due to system/OEM permissions)")
             continue
             
         try:
@@ -132,20 +139,25 @@ def main():
         comp_path = f"{rx['package']}/{rx['component']}"
         if rx["enabled"]:
             print(f"❄️ Disabling autostart component {comp_path}...")
-            res = run_adb(["shell", "pm disable", comp_path])
-            if "new state" in res.lower() or "disabled" in res.lower() or not res.strip():
+            stdout, stderr, code = run_adb(["shell", "pm disable", comp_path])
+            if code == 0 and ("new state" in stdout.lower() or "disabled" in stdout.lower()):
                 rx["enabled"] = False
                 print("✅ Disabled.")
             else:
-                print(f"❌ Failed to disable: {res.strip()}")
+                err = stderr.strip() or stdout.strip() or "Unknown error"
+                print(f"❌ Failed to disable component: {err}")
+                if "securityexception" in err.lower():
+                    print("\033[1;33m💡 Hint: Modern Android versions restrict non-root ADB shell from disabling individual components.\033[0m")
+                    print("\033[1;33m   To prevent battery drain for this app, use 'adb-standby' to force it into the restricted bucket.\033[0m")
         else:
             print(f"🔥 Enabling autostart component {comp_path}...")
-            res = run_adb(["shell", "pm enable", comp_path])
-            if "new state" in res.lower() or "enabled" in res.lower() or not res.strip():
+            stdout, stderr, code = run_adb(["shell", "pm enable", comp_path])
+            if code == 0 and ("new state" in stdout.lower() or "enabled" in stdout.lower()):
                 rx["enabled"] = True
                 print("✅ Enabled.")
             else:
-                print(f"❌ Failed to enable: {res.strip()}")
+                err = stderr.strip() or stdout.strip() or "Unknown error"
+                print(f"❌ Failed to enable component: {err}")
 
 if __name__ == '__main__':
     main()

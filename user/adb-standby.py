@@ -3,9 +3,10 @@ import subprocess, sys
 def run_adb(args):
     cmd = ["adb", "-s", "127.0.0.1:5555"] + args
     try:
-        return subprocess.check_output(cmd, stderr=subprocess.DEVNULL).decode("utf-8", errors="ignore").replace('\r', '')
-    except Exception:
-        return ""
+        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=15)
+        return proc.stdout.replace('\r', ''), proc.stderr.replace('\r', ''), proc.returncode
+    except Exception as e:
+        return "", str(e), -1
 
 def main():
     devices = subprocess.check_output(["adb", "devices"]).decode("utf-8")
@@ -22,7 +23,7 @@ def main():
     
     if choice == "1":
         print("\n⏳ Gathering standby buckets... (This may take a moment)")
-        out_pkg = run_adb(["shell", "pm list packages -3"])
+        out_pkg, _, _ = run_adb(["shell", "pm list packages -3"])
         packages = []
         for line in out_pkg.splitlines():
             if line.strip().startswith("package:"):
@@ -30,7 +31,8 @@ def main():
 
         buckets = {}
         for pkg in sorted(packages):
-            bucket_out = run_adb(["shell", "am get-standby-bucket", pkg]).strip()
+            bucket_out, _, _ = run_adb(["shell", "am get-standby-bucket", pkg])
+            bucket_out = bucket_out.strip()
             name = "unknown"
             if "10" in bucket_out or "active" in bucket_out.lower():
                 name = "Active (No restrictions)"
@@ -53,21 +55,23 @@ def main():
         pkg = input("👉 Enter package name to restrict: ").strip()
         if pkg:
             print(f"⚡ Restricting package {pkg}...")
-            res = run_adb(["shell", "am set-standby-bucket", pkg, "restricted"])
-            if not res.strip() or "error" not in res.lower():
+            stdout, stderr, code = run_adb(["shell", "am set-standby-bucket", pkg, "restricted"])
+            if code == 0 and "error" not in stdout.lower() and "error" not in stderr.lower():
                 print(f"✅ Package standby bucket set to \033[1;31mrestricted\033[0m.")
             else:
-                print(f"❌ Failed to set bucket: {res.strip()}")
+                err = stderr.strip() or stdout.strip() or "Unknown error"
+                print(f"❌ Failed to set bucket: {err}")
                 
     elif choice == "3":
         pkg = input("👉 Enter package name to unrestrict: ").strip()
         if pkg:
             print(f"🔥 Unrestricting package {pkg}...")
-            res = run_adb(["shell", "am set-standby-bucket", pkg, "active"])
-            if not res.strip() or "error" not in res.lower():
+            stdout, stderr, code = run_adb(["shell", "am set-standby-bucket", pkg, "active"])
+            if code == 0 and "error" not in stdout.lower() and "error" not in stderr.lower():
                 print(f"✅ Package standby bucket set to \033[1;32mactive\033[0m.")
             else:
-                print(f"❌ Failed to set bucket: {res.strip()}")
+                err = stderr.strip() or stdout.strip() or "Unknown error"
+                print(f"❌ Failed to set bucket: {err}")
                 
     else:
         print("❌ Invalid choice.")
