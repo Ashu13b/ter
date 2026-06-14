@@ -101,6 +101,19 @@ The custom function `tabname()` dynamically renames the Termux side-drawer sessi
 
 ---
 
+## ⚙️ Background Task & Stability Manager (`~/.shell.d/user/termux-bg.py`)
+`termux-bg` is a background stability utility that exempts Termux from Android background constraints and runs tasks reliably:
+* **Background Audit**: Run `termux-bg status` to audit WakeLock, battery optimization whitelists, and Phantom Process Killer states.
+* **Auto-Fix Limits**: Run `termux-bg fix` to disable the Phantom Process Killer and exempt Termux from battery savings via loopback ADB.
+* **Safe Background Runs**: Run `termux-bg run <name> "<command>"` to execute tasks with:
+  * Persistent Termux WakeLocks (preventing CPU sleep).
+  * System notification cards on completion (exit codes).
+  * Logging outputs redirected to `~/.termux/bg_logs/<name>_<timestamp>.log`.
+* **Monitor Tasks**: Use `termux-bg list` to view active background runs, `termux-bg stop <name>` to kill a task, and `termux-bg log <name>` to view output logs.
+
+---
+
+
 ## 🚀 Installation
 
 To deploy this environment configuration:
