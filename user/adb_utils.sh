@@ -1,5 +1,20 @@
 # ── TER OS: ADB-Powered System Utilities ──
 
+_get_adb_device() {
+    local devs; devs=$(adb devices 2>/dev/null | tail -n +2 | grep -v "unauthorized" | awk '{print $1}')
+    if [ -z "$devs" ]; then
+        echo ""
+        return 1
+    fi
+    if echo "$devs" | grep -q "127.0.0.1:5555"; then
+        echo "127.0.0.1:5555"
+    elif echo "$devs" | grep -q "emulator"; then
+        echo "$devs" | grep "emulator" | head -n 1
+    else
+        echo "$devs" | head -n 1
+    fi
+}
+
 # ── 1. Device System Metrics ──
 adb-sysinfo() {
     if [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
@@ -7,7 +22,7 @@ adb-sysinfo() {
         echo "Usage: adb-sysinfo"
         echo ""
         echo "Description:"
-        echo "  Queries the connected device via ADB loopback to fetch and display:"
+        echo "  Queries the connected device via ADB to fetch and display:"
         echo "    • Product Model name"
         echo "    • Android OS version"
         echo "    • Battery Level, Temperature (°C), and Charge Status"
@@ -15,17 +30,18 @@ adb-sysinfo() {
         return 0
     fi
 
-    if ! adb devices | grep -q "127.0.0.1:5555[[:space:]]*device"; then
-        echo -e "${C_RED}❌ ADB loopback is offline. Run adbcon first.${C_RESET}"
+    local dev; dev=$(_get_adb_device)
+    if [ -z "$dev" ]; then
+        echo -e "${C_RED}❌ No active ADB device found. Run adbcon first.${C_RESET}"
         return 1
     fi
     
     echo -e "\n${C_BOLD}${C_CYAN}─── DEVICE SYSTEM METRICS ───${C_RESET}"
-    local model; model=$(adb -s 127.0.0.1:5555 shell getprop ro.product.model | tr -d '\r')
-    local android_ver; android_ver=$(adb -s 127.0.0.1:5555 shell getprop ro.build.version.release | tr -d '\r')
+    local model; model=$(adb -s "$dev" shell getprop ro.product.model | tr -d '\r')
+    local android_ver; android_ver=$(adb -s "$dev" shell getprop ro.build.version.release | tr -d '\r')
     
     # Parse battery status
-    local battery_info; battery_info=$(adb -s 127.0.0.1:5555 shell dumpsys battery 2>/dev/null | tr -d '\r')
+    local battery_info; battery_info=$(adb -s "$dev" shell dumpsys battery 2>/dev/null | tr -d '\r')
     local level; level=$(echo "$battery_info" | grep -E "^\s*level:" | awk '{print $2}')
     local temp; temp=$(echo "$battery_info" | grep -E "^\s*temperature:" | awk '{print $2}')
     local temp_c; temp_c=$(python3 -c "print($temp / 10.0)" 2>/dev/null || echo "?")
@@ -40,7 +56,7 @@ adb-sysinfo() {
     esac
     
     # Parse CPU top processes
-    local cpu_load; cpu_load=$(adb -s 127.0.0.1:5555 shell top -n 1 -m 5 2>/dev/null | grep -E "%" | head -n 5)
+    local cpu_load; cpu_load=$(adb -s "$dev" shell top -n 1 -m 5 2>/dev/null | grep -E "%" | head -n 5)
 
     echo -e "  ${C_BOLD}Model:${C_RESET} ${C_YELLOW}$model${C_RESET} (Android $android_ver)"
     echo -e "  ${C_BOLD}Battery:${C_RESET} ${C_GREEN}${level}%${C_RESET} | Temp: ${C_BLUE}${temp_c}°C${C_RESET} | Status: ${C_CYAN}$batt_status${C_RESET}"
@@ -66,8 +82,9 @@ adb-screengrab() {
         return 0
     fi
 
-    if ! adb devices | grep -q "127.0.0.1:5555[[:space:]]*device"; then
-        echo -e "${C_RED}❌ ADB loopback is offline. Run adbcon first.${C_RESET}"
+    local dev; dev=$(_get_adb_device)
+    if [ -z "$dev" ]; then
+        echo -e "${C_RED}❌ No active ADB device found. Run adbcon first.${C_RESET}"
         return 1
     fi
     
@@ -75,11 +92,11 @@ adb-screengrab() {
     local local_dir; local_dir=$(pwd)
     
     echo -e "📸 Capturing phone screen..."
-    adb -s 127.0.0.1:5555 shell screencap -p /sdcard/Download/tmp_screenshot.png
+    adb -s "$dev" shell screencap -p /sdcard/Download/tmp_screenshot.png
     
     echo -e "📥 Pulling image to workspace..."
-    adb -s 127.0.0.1:5555 pull /sdcard/Download/tmp_screenshot.png "$local_dir/$filename" >/dev/null 2>&1
-    adb -s 127.0.0.1:5555 shell rm /sdcard/Download/tmp_screenshot.png
+    adb -s "$dev" pull /sdcard/Download/tmp_screenshot.png "$local_dir/$filename" >/dev/null 2>&1
+    adb -s "$dev" shell rm /sdcard/Download/tmp_screenshot.png
     
     echo -e "🎉 Screenshot saved in local folder as: ${C_GREEN}$local_dir/$filename${C_RESET}"
     if command -v termux-open &>/dev/null; then
@@ -94,20 +111,13 @@ adb-manage() {
         return 0
     fi
 
-    if ! adb devices | grep -q "127.0.0.1:5555[[:space:]]*device"; then
-        echo -e "${C_RED}❌ ADB loopback is offline. Run adbcon first.${C_RESET}"
+    local dev; dev=$(_get_adb_device)
+    if [ -z "$dev" ]; then
+        echo -e "${C_RED}❌ No active ADB device found. Run adbcon first.${C_RESET}"
         return 1
     fi
     python3 "$HOME/.shell.d/user/adb-manage.py" "$@"
 }
-
-
-# ── 4. Silent Background APK Installer (DISABLED FOR SECURITY) ──
-# adb-install() {
-#     echo -e "${C_RED}⚠️ adb-install has been disabled for security reasons.${C_RESET}"
-#     echo -e "If you want to re-enable it, edit your ~/.shell.d/user/adb_utils.sh file."
-#     return 1
-# }
 
 # ── 5. System Logcat Streamer & Filter ──
 adb-logcat() {
@@ -122,16 +132,17 @@ adb-logcat() {
         return 0
     fi
 
-    if ! adb devices | grep -q "127.0.0.1:5555[[:space:]]*device"; then
-        echo -e "${C_RED}❌ ADB loopback is offline. Run adbcon first.${C_RESET}"
+    local dev; dev=$(_get_adb_device)
+    if [ -z "$dev" ]; then
+        echo -e "${C_RED}❌ No active ADB device found. Run adbcon first.${C_RESET}"
         return 1
     fi
     if [ -n "$1" ]; then
         echo -e "📋 Streaming system logs for filter: ${C_YELLOW}$1${C_RESET} (Press Ctrl+C to exit)..."
-        adb -s 127.0.0.1:5555 logcat | grep -i "$1"
+        adb -s "$dev" logcat | grep -i "$1"
     else
         echo -e "📋 Streaming system logs (Press Ctrl+C to exit)..."
-        adb -s 127.0.0.1:5555 logcat
+        adb -s "$dev" logcat
     fi
 }
 
@@ -151,8 +162,9 @@ adb-audit() {
         return 0
     fi
 
-    if ! adb devices | grep -q "127.0.0.1:5555[[:space:]]*device"; then
-        echo -e "${C_RED}❌ ADB loopback is offline. Run adbcon first.${C_RESET}"
+    local dev; dev=$(_get_adb_device)
+    if [ -z "$dev" ]; then
+        echo -e "${C_RED}❌ No active ADB device found. Run adbcon first.${C_RESET}"
         return 1
     fi
     
@@ -173,4 +185,3 @@ adb-audit() {
 
     python3 "$HOME/.shell.d/user/adb-audit.py" "$key"
 }
-

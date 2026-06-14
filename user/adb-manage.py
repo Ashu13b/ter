@@ -3,8 +3,29 @@ import subprocess, sys, re, os
 def make_link(url, text):
     return f"\033]8;;{url}\033\\{text}\033]8;;\033\\"
 
+def get_adb_device():
+    try:
+        proc = subprocess.run(["adb", "devices"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=5)
+        devices = []
+        for line in proc.stdout.splitlines()[1:]:
+            if line.strip() and "device" in line and not "unauthorized" in line:
+                parts = line.split()
+                if parts:
+                    devices.append(parts[0])
+        if "127.0.0.1:5555" in devices:
+            return "127.0.0.1:5555"
+        for d in devices:
+            if "emulator" in d:
+                return d
+        return devices[0] if devices else None
+    except Exception:
+        return None
+
 def run_adb(args):
-    cmd = ["adb", "-s", "127.0.0.1:5555"] + args
+    device = get_adb_device()
+    if not device:
+        return "", "No active ADB device found", -1
+    cmd = ["adb", "-s", device] + args
     try:
         proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=20)
         return proc.stdout.replace('\r', ''), proc.stderr.replace('\r', ''), proc.returncode
@@ -522,9 +543,9 @@ def cli_main():
         print_help()
         sys.exit(0)
 
-    devices = subprocess.check_output(["adb", "devices"]).decode("utf-8")
-    if "127.0.0.1:5555" not in devices:
-        print("\033[1;31m❌ ADB loopback is offline. Run adbcon first.\033[0m")
+    device = get_adb_device()
+    if not device:
+        print("\033[1;31m❌ No active ADB device found. Run adbcon first.\033[0m")
         sys.exit(1)
 
     if not args:
