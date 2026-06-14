@@ -36,12 +36,24 @@ def check_phantom_processes():
     stdout_max, _, _ = run_adb(["shell", "device_config get activity_manager max_phantom_processes"])
     
     enabled = stdout_enabled.strip().lower() != "false"
-    # It is optimized if monitor is false
-    return not enabled
+    max_val = stdout_max.strip()
+    
+    # If the monitor is disabled entirely, it is optimized but has no safety restrictions
+    if not enabled:
+        return True, "NO (DISABLED)"
+        
+    # If it is enabled but the ceiling is high (>= 1000), it is optimized with safety headroom
+    try:
+        if max_val and int(max_val) >= 1000:
+            return True, f"SAFE (LIMIT {max_val})"
+    except ValueError:
+        pass
+        
+    return False, "RESTRICTED (32)"
 
 def show_status():
     wl = get_wake_lock_status()
-    phantom_opt = check_phantom_processes()
+    phantom_opt, phantom_raw = check_phantom_processes()
     battery_opt = check_battery_optimization()
     
     wl_icon = "🟢" if wl else "🟡"
@@ -50,7 +62,6 @@ def show_status():
     wl_padded = wl_state + (" " * (28 - len(wl_raw)))
     
     phantom_icon = "🟢" if phantom_opt else "🔴"
-    phantom_raw = "OPTIMIZED" if phantom_opt else "LIMITING"
     phantom_state = f"\033[1;32m{phantom_raw}\033[0m" if phantom_opt else f"\033[1;31m{phantom_raw}\033[0m"
     phantom_padded = phantom_state + (" " * (28 - len(phantom_raw)))
     
@@ -66,7 +77,7 @@ def show_status():
     print("\033[1;35m│\033[0m      ↳ Prevents CPU from entering deep sleep             \033[1;35m│\033[0m")
     print("\033[1;35m│\033[0m                                                          \033[1;35m│\033[0m")
     print(f"\033[1;35m│\033[0m  {phantom_icon}  Phantom Process      : {phantom_padded}\033[1;35m│\033[0m")
-    print("\033[1;35m│\033[0m      ↳ Disabled, child processes won't be killed         \033[1;35m│\033[0m")
+    print("\033[1;35m│\033[0m      ↳ Monitored, but process limits are set safely      \033[1;35m│\033[0m")
     print("\033[1;35m│\033[0m                                                          \033[1;35m│\033[0m")
     print(f"\033[1;35m│\033[0m  {battery_icon}  Battery Optimization : {battery_padded}\033[1;35m│\033[0m")
     print("\033[1;35m│\033[0m      ↳ Whitelisted from App Standby & Doze               \033[1;35m│\033[0m")
@@ -84,10 +95,10 @@ def show_status():
 def fix_settings():
     print("\n⚡ Optimizing Termux background permissions...")
     
-    # 1. Disable phantom process killer
-    print("  🛠️ Disabling Phantom Process Killer...")
-    run_adb(["shell", "settings put global settings_enable_monitor_phantom_procs false"])
-    run_adb(["shell", "device_config put activity_manager max_phantom_processes 2147483647"])
+    # 1. Keep monitor on, but raise process limit ceiling to 2048 to prevent runaways while allowing heavy Termux usage
+    print("  🛠️ Setting Phantom Process limit to 2048...")
+    run_adb(["shell", "settings put global settings_enable_monitor_phantom_procs true"])
+    run_adb(["shell", "device_config put activity_manager max_phantom_processes 2048"])
     
     # 2. Whitelist com.termux from deviceidle
     print("  🛠️ Whitelisting Termux from battery optimization...")
