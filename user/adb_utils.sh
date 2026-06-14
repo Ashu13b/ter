@@ -129,113 +129,187 @@ adb-logcat() {
     fi
 }
 
-# ── 6. Audit Sideloaded Apps (Sideload / ADB Installation Scan) ──
-adb-audit-sideloads() {
+# ── 6. Master Security & Privacy Audit Engine ──
+adb-audit() {
     if ! adb devices | grep -q "127.0.0.1:5555[[:space:]]*device"; then
         echo -e "${C_RED}❌ ADB loopback is offline. Run adbcon first.${C_RESET}"
         return 1
     fi
 
-    echo -e "\n${C_BOLD}${C_CYAN}─── SIDELOADED/ADB APP AUDIT ───${C_RESET}"
-    echo -e "${C_DIM}Scanning installed apps for missing or untrusted installer sources...${C_RESET}\n"
+    python3 - "$1" << 'EOF'
+import subprocess, re, sys
 
-    # Fetch packages and installer info, filter for installer=null or empty
-    local audit_list; audit_list=$(adb -s 127.0.0.1:5555 shell pm list packages -i -3 2>/dev/null | tr -d '\r' | grep -E "installer=(null| |$)")
+C_BOLD = "\033[1m"
+C_RED = "\033[1;31m"
+C_GREEN = "\033[1;32m"
+C_YELLOW = "\033[1;33m"
+C_CYAN = "\033[1;36m"
+C_MAGENTA = "\033[1;35m"
+C_RESET = "\033[0m"
+C_DIM = "\033[2m"
 
-    if [ -n "$audit_list" ]; then
-        echo -e "${C_YELLOW}⚠️  Detected apps sideloaded via ADB or manual installation files:${C_RESET}"
-        echo "$audit_list" | awk '{
-            split($1, a, ":");
-            pkg = a[2];
-            split($2, b, "=");
-            inst = b[2];
-            if (inst == "") inst = "Unknown";
-            print "  • \033[31m" pkg "\033[0m (Installer: \033[2m" inst "\033[0m)"
-        }'
-        echo -e "\n${C_DIM}Note: Pre-bundled system components or manually sideloaded apps show 'null' or 'Unknown'.${C_RESET}"
-    else
-        echo -e "${C_GREEN}✔ No sideloaded third-party apps detected. All apps installed from official stores.${C_RESET}"
-    fi
-    echo ""
+DANGEROUS_PERMS = {
+    "android.permission.RECORD_AUDIO": ("Microphone", C_RED),
+    "android.permission.CAMERA": ("Camera", C_RED),
+    "android.permission.ACCESS_FINE_LOCATION": ("GPS Location", C_YELLOW),
+    "android.permission.READ_SMS": ("Read SMS (2FA Risk)", C_RED),
+    "android.permission.RECEIVE_SMS": ("Receive SMS (2FA Risk)", C_RED),
+    "android.permission.SYSTEM_ALERT_WINDOW": ("Draw Over Apps (Overlay Risk)", C_YELLOW),
+    "android.permission.READ_CALL_LOG": ("Call Logs", C_DIM),
+    "android.permission.READ_CONTACTS": ("Contacts", C_DIM),
 }
 
-# ── 7. Audit Hidden Background Apps (No Icon + Active) ──
-adb-audit-hidden() {
-    if ! adb devices | grep -q "127.0.0.1:5555[[:space:]]*device"; then
-        echo -e "${C_RED}❌ ADB loopback is offline. Run adbcon first.${C_RESET}"
-        return 1
-    fi
-
-    python3 << 'EOF'
-import subprocess, re
-
-def get_launcher_packages():
+def run_adb(args):
+    cmd = ["adb", "-s", "127.0.0.1:5555"] + args
     try:
-        out = subprocess.check_output([
-            "adb", "-s", "127.0.0.1:5555", "shell", 
-            "cmd package query-activities -a android.intent.action.MAIN -c android.intent.category.LAUNCHER"
-        ]).decode("utf-8")
-        packages = set(re.findall(r"packageName=([a-zA-Z0-9._]+)", out))
-        return packages
-    except Exception as e:
-        print(f"Error querying launcher activities: {e}")
-        return set()
+        return subprocess.check_output(cmd, stderr=subprocess.DEVNULL).decode("utf-8").replace('\r', '')
+    except Exception:
+        return ""
 
 def get_third_party_packages():
-    try:
-        out = subprocess.check_output([
-            "adb", "-s", "127.0.0.1:5555", "shell", "pm list packages -3"
-        ]).decode("utf-8")
-        return set(line.strip().split(":")[1] for line in out.splitlines() if line.strip().startswith("package:"))
-    except Exception as e:
-        print(f"Error listing packages: {e}")
-        return set()
+    out = run_adb(["shell", "pm list packages -i -3"])
+    packages = []
+    for line in out.splitlines():
+        if line.strip().startswith("package:"):
+            parts = line.strip().split()
+            pkg = parts[0].split(':')[1]
+            inst = parts[1].split('=')[1] if len(parts) > 1 else "Unknown"
+            packages.append((pkg, inst))
+    return packages
 
-def get_running_processes():
-    try:
-        out = subprocess.check_output([
-            "adb", "-s", "127.0.0.1:5555", "shell", "ps -A"
-        ]).decode("utf-8")
-        running = set()
-        for line in out.splitlines():
-            parts = line.split()
-            if len(parts) >= 9:
-                uid = parts[0]
-                proc_name = parts[-1]
-                if uid.startswith("u0_a"):
-                    base_pkg = proc_name.split(":")[0]
-                    running.add(base_pkg)
-        return running
-    except Exception as e:
-        print(f"Error listing processes: {e}")
-        return set()
+def audit_sideloads(packages):
+    print(f"\n{C_CYAN}─── 1. SIDELOADED / ADB INSTALLATION AUDIT ───{C_RESET}")
+    flagged = []
+    for pkg, inst in packages:
+        if inst in ["null", "Unknown", ""]:
+            flagged.append((pkg, inst))
+            
+    if flagged:
+        print(f"{C_YELLOW}⚠️  Detected apps sideloaded via ADB or manual APK files:{C_RESET}")
+        for pkg, inst in flagged:
+            print(f"  • {C_RED}{pkg}{C_RESET} (Installer: {C_DIM}{inst if inst else 'null'}{C_RESET})")
+    else:
+        print(f"{C_GREEN}✔ All third-party apps were installed via trusted store sources.{C_RESET}")
 
-def audit():
-    launcher_pkgs = get_launcher_packages()
-    third_party_pkgs = get_third_party_packages()
-    running_pkgs = get_running_processes()
+def audit_hidden(packages):
+    print(f"\n{C_CYAN}─── 2. RUNNING ICONLESS BACKGROUND APPS ───{C_RESET}")
+    out_launch = run_adb(["shell", "cmd package query-activities -a android.intent.action.MAIN -c android.intent.category.LAUNCHER"])
+    launcher_pkgs = set(re.findall(r"packageName=([a-zA-Z0-9._]+)", out_launch))
     
-    print("\n\033[1;36m─── BACKGROUND ICONLESS APP AUDIT ───\033[0m")
-    print("\033[2mScanning for running background apps with no launcher icons...\033[0m\n")
-    
+    out_ps = run_adb(["shell", "ps -A"])
+    running_pkgs = set()
+    for line in out_ps.splitlines():
+        parts = line.split()
+        if len(parts) >= 9:
+            uid, proc_name = parts[0], parts[-1]
+            if uid.startswith("u0_a"):
+                running_pkgs.add(proc_name.split(':')[0])
+                
+    third_party_names = set(pkg for pkg, _ in packages)
     flagged = []
     for pkg in sorted(running_pkgs):
-        if pkg in third_party_pkgs and pkg not in launcher_pkgs:
-            if pkg == "com.termux":
-                continue
+        if pkg in third_party_names and pkg not in launcher_pkgs and pkg != "com.termux":
             flagged.append(pkg)
             
     if flagged:
-        print("\033[1;33m⚠️  Detected running background apps with NO launcher app icon:\033[0m")
+        print(f"{C_YELLOW}⚠️  Detected running background apps with NO launcher app drawer icon:{C_RESET}")
         for pkg in flagged:
-            print(f"  • \033[1;31m{pkg}\033[0m")
-        print("\n\033[2mNote: These apps run in the background but do not have an icon in your app drawer.\033[0m")
-        print("\033[2mThis is common for background services (like keyboard engines or plugins), but can also indicate spyware.\033[0m")
+            print(f"  • {C_RED}{pkg}{C_RESET}")
+        print(f"\n{C_DIM}Note: These may be legitimate keyboards/services, but hidden background run is a common spyware pattern.{C_RESET}")
     else:
-        print("\033[1;32m✔ No suspicious iconless background apps detected running.\033[0m")
-    print()
+        print(f"{C_GREEN}✔ No suspicious iconless background apps detected running.{C_RESET}")
 
-if __name__ == "__main__":
-    audit()
+def audit_permissions(packages):
+    print(f"\n{C_CYAN}─── 3. PRIVACY & SENSITIVE PERMISSIONS AUDIT ───{C_RESET}")
+    print(f"{C_DIM}Scanning third-party apps for critical permission grants (Camera, Mic, SMS, GPS)...{C_RESET}\n")
+    
+    apps_with_perms = {}
+    for pkg, _ in packages:
+        if pkg == "com.termux":
+            continue
+        dumpsys = run_adb(["shell", "dumpsys package", pkg])
+        
+        granted = []
+        for line in dumpsys.splitlines():
+            line = line.strip()
+            match = re.search(r"([a-zA-Z0-9._]+permission[a-zA-Z0-9._]+):\s*granted=true", line)
+            if match:
+                perm = match.group(1)
+                if perm in DANGEROUS_PERMS:
+                    granted.append(perm)
+                    
+        if granted:
+            apps_with_perms[pkg] = list(set(granted))
+            
+    if apps_with_perms:
+        for pkg, perms in sorted(apps_with_perms.items()):
+            print(f"  • {C_BOLD}{pkg}{C_RESET}")
+            for perm in sorted(perms):
+                name, color = DANGEROUS_PERMS[perm]
+                print(f"    - {color}{name:<32}{C_RESET} {C_DIM}({perm}){C_RESET}")
+    else:
+        print(f"{C_GREEN}✔ No third-party apps hold high-risk privacy permissions.{C_RESET}")
+
+def audit_system_security():
+    print(f"\n{C_CYAN}─── 4. ELEVATED PRIVILEGES & SERVICES AUDIT ───{C_RESET}")
+    
+    dpm_out = run_adb(["shell", "dumpsys device_policy"])
+    admins = []
+    in_section = False
+    for line in dpm_out.splitlines():
+        if "Enabled Device Admins" in line:
+            in_section = True
+            continue
+        if in_section:
+            if line.startswith("  ") and not line.startswith("    "):
+                in_section = False
+            elif "ComponentInfo" in line or "/" in line:
+                admins.append(line.strip())
+                
+    if admins:
+        print(f"  {C_YELLOW}⚠️  Enabled Device Administrators (Can wipe phone / lock settings):{C_RESET}")
+        for admin in admins:
+            print(f"    • {C_RED}{admin}{C_RESET}")
+    else:
+        print(f"  {C_GREEN}✔ No active Device Administrator apps.{C_RESET}")
+        
+    acc_out = run_adb(["shell", "settings get secure enabled_accessibility_services"]).strip()
+    if acc_out and acc_out != "null" and acc_out != "":
+        services = acc_out.split(':')
+        print(f"\n  {C_YELLOW}⚠️  Active Accessibility Services (Can read screen / simulate clicks):{C_RESET}")
+        for srv in services:
+            print(f"    • {C_RED}{srv}{C_RESET}")
+    else:
+        print(f"\n  {C_GREEN}✔ No active Accessibility Services (Screen-readers/Trojans).{C_RESET}")
+
+def run_all_audits():
+    arg = sys.argv[1] if len(sys.argv) > 1 else ""
+    packages = get_third_party_packages()
+    
+    if arg in ["sideloads", "hidden", "permissions", "system"]:
+        if arg == "sideloads":
+            audit_sideloads(packages)
+        elif arg == "hidden":
+            audit_hidden(packages)
+        elif arg == "permissions":
+            audit_permissions(packages)
+        elif arg == "system":
+            audit_system_security()
+    else:
+        print(f"\n{C_BOLD}{C_MAGENTA}============================================================{C_RESET}")
+        print(f"          {C_BOLD}TER OS: SECURITY AND PRIVACY AUDIT ENGINE{C_RESET}")
+        print(f"{C_BOLD}{C_MAGENTA}============================================================{C_RESET}")
+        audit_sideloads(packages)
+        audit_hidden(packages)
+        audit_permissions(packages)
+        audit_system_security()
+        print(f"\n{C_BOLD}{C_MAGENTA}============================================================{C_RESET}\n")
+
+if __name__ == '__main__':
+    run_all_audits()
 EOF
 }
+
+# ── Backwards Compatible Aliases ──
+adb-audit-sideloads() { adb-audit sideloads; }
+adb-audit-hidden() { adb-audit hidden; }
