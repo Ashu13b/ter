@@ -39,6 +39,10 @@ def unfreeze_app(pkg):
         return False
 
 def set_standby(pkg, bucket):
+    category = classify_package(pkg)
+    if bucket == "restricted" and category != "Safe to Disable":
+        print(f"\033[1;33m⚠️ Note: {pkg} is classified as '{category}'. Background limits may affect performance.\033[0m")
+        
     print(f"⚡ Setting standby bucket for {pkg} to {bucket}...")
     stdout, stderr, code = run_adb(["shell", "am set-standby-bucket", pkg, bucket])
     if code == 0 and "error" not in stdout.lower() and "error" not in stderr.lower():
@@ -82,52 +86,90 @@ def export_apk(pkg):
         print(f"❌ Failed to pull APK: {str(e)}")
         return False
 
-# Standby Buckets Sub-menu
+# Standby Buckets Manager
 def standby_menu():
     while True:
+        print("\n⏳ Gathering standby states... (This may take a moment)")
+        packages = get_third_party_packages()
+        app_list = []
+        for pkg in packages:
+            bucket_out, _, _ = run_adb(["shell", "am get-standby-bucket", pkg])
+            bucket_out = bucket_out.strip()
+            
+            # Categorize bucket
+            state_code = "unknown"
+            state_desc = "Unknown"
+            if "10" in bucket_out or "active" in bucket_out.lower():
+                state_code = "active"
+                state_desc = "\033[1;32mActive (Unrestricted)\033[0m"
+            elif "20" in bucket_out or "working" in bucket_out.lower():
+                state_code = "working"
+                state_desc = "Working Set (Mild)"
+            elif "30" in bucket_out or "frequent" in bucket_out.lower():
+                state_code = "frequent"
+                state_desc = "Frequent (Moderate)"
+            elif "40" in bucket_out or "rare" in bucket_out.lower():
+                state_code = "rare"
+                state_desc = "Rare (Strong limit)"
+            elif "45" in bucket_out or "restricted" in bucket_out.lower():
+                state_code = "restricted"
+                state_desc = "\033[1;31mRestricted (Max saving)\033[0m"
+                
+            category = classify_package(pkg)
+            app_list.append({
+                "package": pkg,
+                "state_code": state_code,
+                "state_desc": state_desc,
+                "category": category
+            })
+            
         print("\n\033[1;36m─── APP STANDBY BUCKET TUNER ───\033[0m")
-        print(" [1] List current standby buckets for all third-party apps")
-        print(" [2] Restrict an app (Force to 'restricted' bucket for maximum battery saving)")
-        print(" [3] Unrestrict an app (Set to 'active' bucket)")
-        print(" [b] Back to main menu")
-        choice = input("👉 Selection (1-3 or b): ").strip()
+        for idx, app in enumerate(app_list, 1):
+            if app["category"] == "Safe to Disable":
+                tag = "  \033[1;36m(Safe to Restrict)\033[0m"
+            else:
+                tag = f"  \033[1;33m(Keep Active - {app['category']})\033[0m"
+            print(f"  [{idx}] {app['package']}\n      ↳ Standby: {app['state_desc']}{tag}")
+            
+        print("\nOptions:")
+        print("  • Enter # to toggle standby state (Active ⟷ Restricted) for an app")
+        print("  • Type 'bulk' to restrict all 'Safe to Restrict' apps at once")
+        print("  • Type 'b' to return to main menu")
         
-        if choice == "b" or not choice:
+        choice = input("\n👉 Choice: ").strip()
+        if choice.lower() == 'b' or not choice:
             break
-        elif choice == "1":
-            print("\n⏳ Gathering standby buckets... (This may take a moment)")
-            packages = get_third_party_packages()
-            buckets = {}
-            for pkg in sorted(packages):
-                bucket_out, _, _ = run_adb(["shell", "am get-standby-bucket", pkg])
-                bucket_out = bucket_out.strip()
-                name = "unknown"
-                if "10" in bucket_out or "active" in bucket_out.lower():
-                    name = "Active (No restrictions)"
-                elif "20" in bucket_out or "working" in bucket_out.lower():
-                    name = "Working Set (Mild restrictions)"
-                elif "30" in bucket_out or "frequent" in bucket_out.lower():
-                    name = "Frequent (Moderate restrictions)"
-                elif "40" in bucket_out or "rare" in bucket_out.lower():
-                    name = "Rare (Strong restrictions)"
-                elif "45" in bucket_out or "restricted" in bucket_out.lower():
-                    name = "\033[1;31mRestricted (Max battery saving)\033[0m"
-                buckets[pkg] = name
-
-            print("\n📦 Third-Party App Standby Buckets:")
-            for pkg, bucket in buckets.items():
-                print(f"  • \033[1m{pkg:<45}\033[0m : {bucket}")
-            print()
-        elif choice == "2":
-            pkg = input("👉 Enter package name to restrict: ").strip()
-            if pkg:
-                set_standby(pkg, "restricted")
-        elif choice == "3":
-            pkg = input("👉 Enter package name to unrestrict: ").strip()
-            if pkg:
-                set_standby(pkg, "active")
-        else:
-            print("❌ Invalid choice.")
+        
+        if choice.lower() == 'bulk':
+            print("\n⚡ Bulk restricting all safe applications...")
+            restricted_count = 0
+            for app in app_list:
+                if app["category"] == "Safe to Disable" and app["state_code"] != "restricted":
+                    print(f"  ❄️ Restricting {app['package']}...")
+                    if set_standby(app["package"], "restricted"):
+                        restricted_count += 1
+            print(f"\n✅ Done! Restricted {restricted_count} safe apps.")
+            continue
+            
+        try:
+            idx = int(choice) - 1
+            if 0 <= idx < len(app_list):
+                app = app_list[idx]
+                if app["state_code"] == "restricted":
+                    set_standby(app["package"], "active")
+                else:
+                    if app["category"] != "Safe to Disable":
+                        print(f"\033[1;33m⚠️ WARNING: This app is classified as '{app['category']}'.\033[0m")
+                        print("  Restricting it might delay push notifications or cause background sync issues.")
+                        confirm = input("👉 Are you sure you want to restrict it? (y/N): ").strip().lower()
+                        if confirm != 'y':
+                            print("❌ Action cancelled.")
+                            continue
+                    set_standby(app["package"], "restricted")
+            else:
+                print("❌ Invalid number.")
+        except ValueError:
+            print("❌ Invalid input.")
 
 # Autostart Sub-menu
 CRITICAL_PATTERNS = [
