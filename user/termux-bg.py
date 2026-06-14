@@ -122,11 +122,8 @@ def start_task(name, command):
     log_file_name = f"{name}_{timestamp}.log"
     log_path = os.path.join(LOG_DIR, log_file_name)
     
-    # Notify start
-    subprocess.run(["termux-notification", "--id", f"bg_{name}", "--title", f"Task Started: {name}", "--content", f"Command: {command}"])
-    
-    # We acquire a lock before command, run command, notify on complete, and release lock
-    shell_cmd = f"termux-wake-lock && {command} ; code=$? ; termux-notification --id bg_{name} --title \"Task Completed: {name}\" --content \"Exit code: $code\" ; termux-wake-unlock"
+    # We acquire a lock before command, run command, and release lock
+    shell_cmd = f"termux-wake-lock && {command} ; code=$? ; termux-wake-unlock"
     
     try:
         log_f = open(log_path, "w")
