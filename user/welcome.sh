@@ -2,7 +2,7 @@ welcome() {
     local user_name="${MY_NAME:-Operator}"
     local upper_name; [ "$CURRENT_SHELL" = "zsh" ] && upper_name="${(U)user_name}" || upper_name="${user_name^^}"
     local c_m="${C_CYAN}"; local c_s="${C_BLUE}"; local c_a="${C_MAGENTA}"
-    echo -e "\n${c_m}    /\\ ${c_s}  TERMUX OS ${C_DIM}v1.0${C_RESET}\n   /  \\  ────────────────────\n  /____\\ ${c_a}WELCOME, ${C_BOLD}${upper_name}${C_RESET}\n"
+    echo -e "\n${c_m}    /\\ ${c_s}  TER OS ${C_DIM}v1.0${C_RESET}\n   /  \\  ────────────────────\n  /____\\ ${c_a}WELCOME, ${C_BOLD}${upper_name}${C_RESET}\n"
     local tips=("apps list → View registered apps." "adbcon → Connect ADB wirelessly." "scan net → Find devices.")
     echo -e "  ${C_YELLOW}INTELLIGENCE:${C_RESET} ${C_DIM}${tips[$(( RANDOM % 3 ))]}${C_RESET}"
     echo -e "\n  ${C_DIM}▰▰▰ OPERATIONS MATRIX ▰▰▰${C_RESET}"
