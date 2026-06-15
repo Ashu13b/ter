@@ -30,6 +30,11 @@ if [ -f "$REPO_DIR/termux.properties" ]; then
     success "Keyboard layout deployed."
 fi
 
+if [ -f "$REPO_DIR/.tmux.conf" ]; then
+    cp "$REPO_DIR/.tmux.conf" "$HOME/.tmux.conf"
+    success "Tmux configuration deployed."
+fi
+
 if [ -f "$REPO_DIR/motd" ]; then
     MOTD_TARGET="/data/data/com.termux/files/usr/etc/motd"
     if [ -w "$MOTD_TARGET" ]; then
