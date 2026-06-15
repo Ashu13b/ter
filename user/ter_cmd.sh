@@ -123,7 +123,7 @@ EOF
                     _ter_apply_theme 224 181 173 "Aubergine Wine & Peach Cream"
                     ;;
                 I|i|obsidian)
-                    _ter_apply_theme 214 179 208 "Obsidian Black & Amber Gold"
+                    _ter_apply_theme 179 137 172 "Obsidian Black & Amber Gold"
                     ;;
                 *)
                     echo "Unknown theme: $2"
@@ -159,7 +159,7 @@ EOF
                 _ter_apply_theme 224 181 173 "Aubergine Wine & Peach Cream"
                 ;;
             [Ii])
-                _ter_apply_theme 214 179 208 "Obsidian Black & Amber Gold"
+                _ter_apply_theme 179 137 172 "Obsidian Black & Amber Gold"
                 ;;
             *)
                 echo "No changes made."
