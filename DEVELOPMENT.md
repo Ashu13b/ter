@@ -77,6 +77,7 @@ These redundant aliases were cleaned up:
 - It still exists as a function and can be invoked manually by typing `welcome`.
 - Startup now only shows: motd banner + compact `optimize status` one-liner.
 
+
 ### optimize Compact Mode
 - `optimize status` now prints a single compact line by default.
 - `optimize status -f` / `--full` shows the original verbose box.
@@ -85,6 +86,35 @@ These redundant aliases were cleaned up:
 ### motd Updated
 - Replaced `c` reference with `cls` in the login banner.
 - Version bumped to v1.1.
+
+---
+
+## Recent Changes (v1.1 → v1.2)
+
+### ⌨️ Touch Keyboard Customizations (`termux.properties`)
+* **Soft Keyboard Lockout Resolution:** When Tmux mouse support is on (`mouse on`), clicking the screen fails to trigger the soft keyboard. Resolved by mapping the first key in the row to `KEYBOARD` on tap (toggles soft keyboard) and `DRAWER` on swipe-up.
+* **Stable 11-key Row:** Ergonomically placed keys for mobile thumbs, with no accidental triggers for `ssh` or `exit`.
+
+### 🪟 Tmux Status Bar & Border Optimization (`.tmux.conf`)
+* **Double-Height Tab Bar:** Programmed a 2-line Tmux status bar where the active tab's background block spans across both lines.
+* **Invisible Splits:** Configured `pane-border-style` and `pane-active-border-style` to `fg=default,bg=default` to render splits completely borderless.
+* **Edge Stripe Removal:** Window background styles are locked to `bg=default` (transparent background) so that Tmux inherits the native Termux transparency, removing borders and thin edge stripes.
+* **Ergonomics & Performance:** Enabled dynamic mouse support (mouse scroll fast overrides, tap to focus), reduced escape-time to `0` for zero latency, and established prefix `~` (tilde) for mobile-friendly input.
+
+### 🎨 Theme Switcher CLI Engine (`ter theme`)
+* **Interactive CLI Switcher:** Added `ter theme` sub-command to the Master Controller. Developers can type a letter (`c`, `f`, `g`, `h`, `i`) to swap configurations across `~/.tmux.conf` and `~/ter/.tmux.conf` instantly.
+* **Active Theme Detection:** The base `ter` dashboard parses `.tmux.conf` to display the active theme in its status table.
+* **5 Preserved Eye-Preserving Themes:**
+  * **Theme C:** Solarized & Sage Green (Sage green text, gold highlights)
+  * **Theme F:** Midnight Indigo & Soft Lavender (Lavender text, pink/purple highlights)
+  * **Theme G:** Charcoal Coffee & Warm Sand (Warm sand text, orange highlights)
+  * **Theme H:** Aubergine Wine & Peach Cream (Peach cream text, terracotta highlights)
+  * **Theme I (Active):** Obsidian Black & Amber Gold (Muted clay/gold text, soft gold active text, and low-contrast dark gray active tab highlights)
+
+### 🏷️ Dynamic Tab Renaming (`tab_title.sh`)
+* **Direct Tmux Renaming:** If running inside Tmux, the script uses the native `tmux rename-window` command rather than background escape sequence daemons, preventing race conditions.
+* **Directory Suffix (`/`):** Added a trailing slash (`/`) to the active directory names (e.g. `ter/`) to clearly designate them as folders.
+* **Clean Formatting:** Omitted the shell environment prefix (`t:`/`u:`) when running inside Tmux tabs to maximize horizontal space.
 
 ---
 
