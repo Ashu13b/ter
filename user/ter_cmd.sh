@@ -5,17 +5,18 @@ _ter_apply_theme() {
     local active_fg="$1"
     local inactive_fg="$2"
     local accent="$3"
-    local name="$4"
+    local tab_fg="$4"
+    local name="$5"
 
     local conf_file="$HOME/.tmux.conf"
     local repo_conf="/data/data/com.termux/files/home/ter/.tmux.conf"
 
     for file in "$conf_file" "$repo_conf"; do
         [ -f "$file" ] || continue
-        sed -i -E "s/status-left \"#\[range=user\|new_win,fg=colour[0-9]+,bold\]/status-left \"#\[range=user\|new_win,fg=colour$accent,bold\]/" "$file"
-        sed -i -E "s/status-right ' #\[fg=colour[0-9]+,bg=default,bold\]/status-right ' #\[fg=colour$accent,bg=default,bold\]/" "$file"
+        sed -i -E "s/status-left \"#\[range=user\|new_win,fg=colour[0-9]+,bold\]/status-left \"#\[range=user\|new_win,fg=colour$active_fg,bold\]/" "$file"
+        sed -i -E "s/status-right ' #\[fg=colour[0-9]+,bg=default,bold\]/status-right ' #\[fg=colour$active_fg,bg=default,bold\]/" "$file"
         sed -i -E "s/status-format\[1\] \"#\[align=left\]     #\[list=on\]#\{W:             ,#\[bg=colour[0-9]+\]/status-format\[1\] \"#\[align=left\]     #\[list=on\]#\{W:             ,#\[bg=colour$accent\]/" "$file"
-        sed -i -E "s/window-status-current-style bg=colour[0-9]+/window-status-current-style bg=colour$accent/" "$file"
+        sed -i -E "s/window-status-current-style bg=colour[0-9]+,fg=colour[0-9]+/window-status-current-style bg=colour$accent,fg=colour$tab_fg/" "$file"
         sed -i -E "s/# Soothing eye-preserving pane styles \((.*) - Transparent Backgrounds\)/# Soothing eye-preserving pane styles ($name - Transparent Backgrounds)/" "$file"
         sed -i -E "s/window-style 'bg=default,fg=colour[0-9]+'/window-style 'bg=default,fg=colour$inactive_fg'/" "$file"
         sed -i -E "s/window-active-style 'bg=default,fg=colour[0-9]+'/window-active-style 'bg=default,fg=colour$active_fg'/" "$file"
@@ -111,19 +112,19 @@ EOF
         if [ -n "$2" ]; then
             case "$2" in
                 C|c|solarized)
-                    _ter_apply_theme 108 253 136 "Solarized & Sage Green"
+                    _ter_apply_theme 108 253 136 232 "Solarized & Sage Green"
                     ;;
                 F|f|midnight)
-                    _ter_apply_theme 189 253 211 "Midnight Indigo & Soft Lavender"
+                    _ter_apply_theme 189 253 211 232 "Midnight Indigo & Soft Lavender"
                     ;;
                 G|g|charcoal)
-                    _ter_apply_theme 223 187 215 "Charcoal Coffee & Warm Sand"
+                    _ter_apply_theme 223 187 215 232 "Charcoal Coffee & Warm Sand"
                     ;;
                 H|h|aubergine)
-                    _ter_apply_theme 224 181 173 "Aubergine Wine & Peach Cream"
+                    _ter_apply_theme 224 181 173 232 "Aubergine Wine & Peach Cream"
                     ;;
                 I|i|obsidian)
-                    _ter_apply_theme 179 137 172 "Obsidian Black & Amber Gold"
+                    _ter_apply_theme 179 137 237 179 "Obsidian Black & Amber Gold"
                     ;;
                 *)
                     echo "Unknown theme: $2"
@@ -147,19 +148,19 @@ EOF
         read -p "Select theme [C/F/G/H/I]: " choice
         case "$choice" in
             [Cc])
-                _ter_apply_theme 108 253 136 "Solarized & Sage Green"
+                _ter_apply_theme 108 253 136 232 "Solarized & Sage Green"
                 ;;
             [Ff])
-                _ter_apply_theme 189 253 211 "Midnight Indigo & Soft Lavender"
+                _ter_apply_theme 189 253 211 232 "Midnight Indigo & Soft Lavender"
                 ;;
             [Gg])
-                _ter_apply_theme 223 187 215 "Charcoal Coffee & Warm Sand"
+                _ter_apply_theme 223 187 215 232 "Charcoal Coffee & Warm Sand"
                 ;;
             [Hh])
-                _ter_apply_theme 224 181 173 "Aubergine Wine & Peach Cream"
+                _ter_apply_theme 224 181 173 232 "Aubergine Wine & Peach Cream"
                 ;;
             [Ii])
-                _ter_apply_theme 179 137 172 "Obsidian Black & Amber Gold"
+                _ter_apply_theme 179 137 237 179 "Obsidian Black & Amber Gold"
                 ;;
             *)
                 echo "No changes made."
