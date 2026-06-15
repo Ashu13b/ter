@@ -18,6 +18,7 @@ Welcome to the command line interface guide for the unified **TER OS** Termux en
 | `scan` | Security | Local subnet device discoverer, plain-text protocol sniffer, and vulnerability scanner | `scan -h` |
 | `am` | Utility | Interactive shell alias manager (list, add, edit, reload) | `am -h` / `am --help` |
 | `apps` | Registry | Termux plug-in app registry loader and manifest visualizer | `apps -h` |
+| `ter` | System | Master Controller dashboard and interactive theme switcher | `ter -h` / `ter --help` |
 
 ---
 
@@ -132,6 +133,19 @@ Queries installed modular plugins inside `~/.shell.d/apps/` and prints their com
 ```bash
 # List all registered dynamic app plugins
 apps list
+```
+
+### ⚙️ Master Controller & Theme Switcher (`ter`)
+Launches the interactive settings panel for system startup configuration and provides an eye-preserving theme switcher menu.
+```bash
+# Open the master settings dashboard (indicates active theme)
+ter
+
+# Switch tmux themes interactively
+ter theme
+
+# Toggle autostart of tmux session
+ter toggle tmux
 ```
 
 ---
