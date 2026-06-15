@@ -49,10 +49,29 @@ def check_phantom_processes(device=None):
     except ValueError:
         pass
         
-    return False, "RESTRICTED (32)"
+    if not max_val or max_val == "null":
+        return False, "EMPTY (DEFAULT 32)"
+        
+    return False, f"RESTRICTED ({max_val})"
 
 def show_status(full=False):
     device = get_adb_device()
+    
+    if not device:
+        if not full:
+            print("\033[1;35m⚙ BG\033[0m  \033[1;31mADB OFFLINE\033[0m  \033[2m(Run 'adbcon' to check limits)\033[0m")
+        else:
+            print("\n\033[1;35m┌──────────────────────────────────────────────────────────┐\033[0m")
+            print("\033[1;35m│\033[0m          ⚙️  \033[1mTERMUX BACKGROUND STABILITY ENGINE\033[0m          \033[1;35m│\033[0m")
+            print("\033[1;35m├──────────────────────────────────────────────────────────┤\033[0m")
+            print("\033[1;35m│\033[0m  ❌  \033[1;31mERROR: ADB is offline.\033[0m                              \033[1;35m│\033[0m")
+            print("\033[1;35m│\033[0m      Cannot verify system background limits because      \033[1;35m│\033[0m")
+            print("\033[1;35m│\033[0m      the local ADB service is not connected.             \033[1;35m│\033[0m")
+            print("\033[1;35m│\033[0m                                                          \033[1;35m│\033[0m")
+            print("\033[1;35m│\033[0m  👉  \033[1mACTION:\033[0m Run \033[1;32madbcon\033[0m to connect.                    \033[1;35m│\033[0m")
+            print("\033[1;35m└──────────────────────────────────────────────────────────┘\033[0m\n")
+        return
+
     wl = get_wake_lock_status(device=device)
     phantom_opt, phantom_raw = check_phantom_processes(device=device)
     battery_opt = check_battery_optimization(device=device)
@@ -64,9 +83,9 @@ def show_status(full=False):
         bt_s = "\033[1;32m✓\033[0m" if battery_opt else "\033[1;31m✗\033[0m"
         all_ok = wl and phantom_opt and battery_opt
         label = "\033[1;32mSTABLE\033[0m" if all_ok else "\033[1;33mCHECK\033[0m"
-        print(f"\033[1;35m⚙ BG\033[0m  WakeLock:{wl_s}  Phantom:{ph_s}  Battery:{bt_s}  [{label}]  \033[2m(termux-bg status -f for details)\033[0m")
+        print(f"\033[1;35m⚙ BG\033[0m  WakeLock:{wl_s}  Phantom:{ph_s}  Battery:{bt_s}  [{label}]  \033[2m(optimize status -f for details)\033[0m")
         if not all_ok:
-            print(f"  \033[33m↳ Run \033[1mtermux-bg fix\033[0;33m to optimize\033[0m")
+            print(f"  \033[33m↳ Run \033[1moptimize fix\033[0;33m to optimize\033[0m")
         return
 
     # Full verbose box
@@ -98,7 +117,7 @@ def show_status(full=False):
     print("\033[1;35m├──────────────────────────────────────────────────────────┤\033[0m")
     
     if not phantom_opt or not battery_opt:
-        msg = "  ⚠️  Some constraints are active. Run: termux-bg fix"
+        msg = "  ⚠️  Some constraints are active. Run: optimize fix"
         print(f"\033[1;35m│\033[0m\033[1;33m{msg:<58}\033[0m\033[1;35m│\033[0m")
     else:
         msg = "  ✅  Termux is fully optimized for background tasks!"
@@ -254,20 +273,20 @@ def print_help():
     print("\033[1;36mTERMUX BACKGROUND STABILITY MANAGER\033[0m")
     print()
     print("\033[1mStability:\033[0m")
-    print("  termux-bg status             Quick audit (compact one-liner)")
-    print("  termux-bg status -f          Full detailed audit with descriptions")
-    print("  termux-bg fix                Optimize via ADB (phantom limit → 2048, battery whitelist)")
+    print("  optimize status             Quick audit (compact one-liner)")
+    print("  optimize status -f          Full detailed audit with descriptions")
+    print("  optimize fix                Optimize via ADB (phantom limit → 2048, battery whitelist)")
     print()
     print("\033[1mBackground Tasks:\033[0m")
-    print("  termux-bg run <name> <cmd>   Launch command in background with WakeLock & logging")
-    print("  termux-bg list               List all active background tasks")
-    print("  termux-bg stop <name>        Terminate a running background task")
-    print("  termux-bg log <name>         Show log path and tail last 20 lines")
+    print("  optimize run <name> <cmd>   Launch command in background with WakeLock & logging")
+    print("  optimize list               List all active background tasks")
+    print("  optimize stop <name>        Terminate a running background task")
+    print("  optimize log <name>         Show log path and tail last 20 lines")
     print()
     print("\033[1mExamples:\033[0m")
-    print("  termux-bg run myserver \"python3 -m http.server 8080\"")
-    print("  termux-bg stop myserver")
-    print("  termux-bg log myserver")
+    print("  optimize run myserver \"python3 -m http.server 8080\"")
+    print("  optimize stop myserver")
+    print("  optimize log myserver")
     print()
 
 def main():
@@ -285,7 +304,7 @@ def main():
     elif cmd == "run":
         if len(args) < 3:
             print("❌ Error: Missing task name or command.")
-            print("Usage: termux-bg run <name> \"<command>\"")
+            print("Usage: optimize run <name> \"<command>\"")
             sys.exit(1)
         start_task(args[1], args[2])
     elif cmd == "list":

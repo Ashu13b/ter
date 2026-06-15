@@ -38,26 +38,24 @@ adbcon() {
 
     echo -e "⚠️  \e[33mBackground channel offline (Phone rebooted or ADB killed)\e[0m\n"
 
-    # 2. Check Network (Required for Wireless Debugging)
+    # 2. Check Network (Best Effort)
     local IP
-    IP=$(ifconfig 2>/dev/null | grep -oE 'inet (addr:)?[0-9.]+' | grep -oE '[0-9.]+' | grep -v '127.0.0.1' | head -n 1)
+    # Extract only Wi-Fi or Hotspot interfaces (wlan, ap, swlan), ignoring rmnet (mobile data)
+    IP=$(ifconfig 2>/dev/null | awk '/^(wlan|ap|swlan)/ {w=1} /^[^ \t]/ && !/^(wlan|ap|swlan)/ {w=0} w && /inet / {print $2}' | head -n 1)
 
     if [ -z "$IP" ]; then
-        echo -e "\e[1;31m[!] No Wi-Fi or Hotspot detected.\e[0m"
-        echo -e "Android requires a network connection to activate Wireless Debugging."
-        echo -e "👉 \e[1;37mACTION:\e[0m Please connect to any Wi-Fi network or enable Hotspot, then run \e[1;32madbcon\e[0m again."
-        return 1
+        IP="127.0.0.1"
+        echo -e "⚠️  \e[33mNo Wi-Fi detected (Make sure Wi-Fi is connected if using Wireless Debugging)\e[0m"
+    else
+        echo -e "📡 \e[1;32mNetwork detected:\e[0m IP address is $IP"
     fi
 
-    echo -e "📡 \e[1;32mNetwork detected:\e[0m IP address is $IP\n"
-
-    # 3. Wizard Guide
-    echo -e "\e[1;35m[ STEP 1: Enable Developer Options ]\e[0m"
+    echo -e "\n\e[1;35m[ REQUIRED PREPARATION ]\e[0m"
     echo -e "1. Go to phone \e[1;37mSettings\e[0m -> \e[1;37mDeveloper Options\e[0m."
     echo -e "2. Scroll down to \e[1;37mWireless Debugging\e[0m and turn it \e[1;32mON\e[0m."
     echo -e "   (If it asks to allow the network, click Allow/Always Allow)\n"
 
-    echo -e "\e[1;35m[ STEP 2: Pairing Status ]\e[0m"
+    echo -e "\e[1;35m[ STEP 1: Pairing Status ]\e[0m"
     echo -e "Have you ever paired Termux with this phone before?"
     echo -e "  [1] Yes, already paired before (Connect only)"
     echo -e "  [2] No, first time on this phone (Pair & Connect)"

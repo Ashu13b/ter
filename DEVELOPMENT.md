@@ -23,8 +23,8 @@ This document captures the full development context for a new AI agent or develo
 ├── network/                    ← Network tools (scan, adbcon)
 ├── user/                       ← User aliases, utilities, startup hooks
 │   ├── aliases.sh              ← Base aliases & custom cd() function
-│   ├── termux-bg.py            ← Background stability engine (Python CLI)
-│   ├── termux_bg.sh            ← Shell alias wrapper for termux-bg
+│   ├── optimize.py            ← Background stability engine (Python CLI)
+│   ├── optimize.sh            ← Shell alias wrapper for optimize
 │   ├── z-run.sh                ← Startup hook (runs compact BG check)
 │   ├── tab_title.sh            ← Tab renaming utility
 │   ├── adb_utils.sh            ← ADB commands (sysinfo, screengrab, audit, manage)
@@ -75,11 +75,11 @@ These redundant aliases were cleaned up:
 ### Welcome Screen Removed
 - The `welcome()` function in `user/welcome.sh` is no longer called on startup.
 - It still exists as a function and can be invoked manually by typing `welcome`.
-- Startup now only shows: motd banner + compact `termux-bg status` one-liner.
+- Startup now only shows: motd banner + compact `optimize status` one-liner.
 
-### termux-bg Compact Mode
-- `termux-bg status` now prints a single compact line by default.
-- `termux-bg status -f` / `--full` shows the original verbose box.
+### optimize Compact Mode
+- `optimize status` now prints a single compact line by default.
+- `optimize status -f` / `--full` shows the original verbose box.
 - Help text expanded with grouped sections and examples.
 
 ### motd Updated

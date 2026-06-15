@@ -33,8 +33,8 @@ All modular scripts are automatically sourced on terminal startup. They are orga
   * `path` — Print `$PATH` entries, one per line.
   * `kocr-app` / `kocr-res` — Jump shortcuts to Kaggle OCR project.
 * **`tab_title.sh`**: Custom cross-shell compatible tab naming function.
-* **`termux-bg.py`**: Background stability engine (see section below).
-* **`termux_bg.sh`**: Shell wrapper alias for `termux-bg`.
+* **`optimize.py`**: Background stability engine (see section below).
+* **`optimize.sh`**: Shell wrapper alias for `optimize`.
 * **`z-run.sh`**: Startup hook that runs a compact background stability check on each new interactive session.
 * **`adb_utils.sh`**: High-value ADB integration commands:
   * `adb-sysinfo` — Displays battery, temp, device metrics, and CPU usage.
@@ -108,9 +108,9 @@ The custom function `tabname()` dynamically renames the Termux side-drawer sessi
 
 ---
 
-## ⚙️ Background Task & Stability Manager (`termux-bg`)
+## ⚙️ Background Task & Stability Manager (`optimize`)
 
-`termux-bg` is a background stability utility that exempts Termux from Android background constraints and runs tasks reliably.
+`optimize` is a background stability utility that exempts Termux from Android background constraints and runs tasks reliably.
 
 ### Startup Behavior
 On every new interactive terminal session, a **compact one-line** stability summary is printed automatically:
@@ -122,14 +122,14 @@ On every new interactive terminal session, a **compact one-line** stability summ
 
 | Command | Description |
 |:---|:---|
-| `termux-bg status` | Quick compact stability audit (one-liner) |
-| `termux-bg status -f` | Full detailed audit with descriptions (verbose box) |
-| `termux-bg fix` | Optimize via ADB (phantom limit → 2048, battery whitelist) |
-| `termux-bg run <name> <cmd>` | Launch command in background with WakeLock & logging |
-| `termux-bg list` | List all active background tasks |
-| `termux-bg stop <name>` | Terminate a running background task |
-| `termux-bg log <name>` | Show log path and tail last 20 lines |
-| `termux-bg -h` | Show full help with examples |
+| `optimize status` | Quick compact stability audit (one-liner) |
+| `optimize status -f` | Full detailed audit with descriptions (verbose box) |
+| `optimize fix` | Optimize via ADB (phantom limit → 2048, battery whitelist) |
+| `optimize run <name> <cmd>` | Launch command in background with WakeLock & logging |
+| `optimize list` | List all active background tasks |
+| `optimize stop <name>` | Terminate a running background task |
+| `optimize log <name>` | Show log path and tail last 20 lines |
+| `optimize -h` | Show full help with examples |
 
 ---
 

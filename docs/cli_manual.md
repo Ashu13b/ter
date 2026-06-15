@@ -14,7 +14,7 @@ Welcome to the command line interface guide for the unified **TER OS** Termux en
 | `adb-manage` | Operations | Consolidated app management, standby controller, freezing, and APK export | `adb-manage -h` |
 | `adb-logcat` | Logging | Streams real-time Android logs with optional case-insensitive filter | `adb-logcat -h` |
 | `adb-audit` | Security | Comprehensive device security, hidden app, and privacy sensor auditer | `adb-audit -h` |
-| `termux-bg` | Stability | Safely configures background process stability & runs background tasks | `termux-bg -h` |
+| `optimize` | Stability | Safely configures background process stability & runs background tasks | `optimize -h` |
 | `scan` | Security | Local subnet device discoverer, plain-text protocol sniffer, and vulnerability scanner | `scan -h` |
 | `am` | Utility | Interactive shell alias manager (list, add, edit, reload) | `am -h` / `am --help` |
 | `apps` | Registry | Termux plug-in app registry loader and manifest visualizer | `apps -h` |
@@ -85,23 +85,23 @@ adb-audit -d
 adb-audit -i
 ```
 
-### ⚙️ Background Stability Engine (`termux-bg`)
+### ⚙️ Background Stability Engine (`optimize`)
 Manages the background runner system. Raises the Android Phantom Process limit safely to `2048` and whitelists Termux from battery optimization, ensuring that long-running processes (e.g. databases, SSH, servers) are never killed by Android.
 ```bash
 # Audit background stability state (WakeLock, Phantom limit, Battery exemption)
-termux-bg status
+optimize status
 
 # Apply background optimizations (raised phantom limits and whitelist exemption)
-termux-bg fix
+optimize fix
 
 # Start a command in background, keeping a CPU WakeLock
-termux-bg run <task_name> "<command>"
+optimize run <task_name> "<command>"
 
 # List all active background tasks running under WakeLocks
-termux-bg list
+optimize list
 
 # View logs or tail output for a background task
-termux-bg log <task_name>
+optimize log <task_name>
 ```
 
 ### 📡 Network Scanner (`scan`)
