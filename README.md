@@ -101,6 +101,23 @@ Your touch keyboard has a custom extra-keys row with popups (swipe up on a key t
 
 ---
 
+## 🪟 Tmux Workspace Manager (`~/.tmux.conf`)
+TER OS is tightly integrated with Tmux, completely customized for mobile thumbs and gesture workflows.
+* **Prefix Key:** `~` (Tilde) — the central command hub.
+* **Tabs (Windows):**
+  * `~` + `c`: Create new tab
+  * `~` + `p` / `n`: Previous / Next tab
+  * Bottom Right `⏭` Button: Tap the status bar to jump to next tab.
+* **Panes (Split Screens):**
+  * `~` + `|` / `-`: Split vertically / horizontally
+  * `~` + `Left/Right/Up/Down`: Jump between splits
+  * `~` + `x`: Close split
+* **Mouse Mode:**
+  * `~` + `m`: Toggle mouse ON/OFF (ON for taps/clicks, OFF for native kinetic scrolling)
+  * Swipe up/down for ultra-fast, smooth 5-line scrolling.
+
+---
+
 ## 📱 Drawer / Side Panel Naming (`~/.shell.d/user/tab_title.sh`)
 The custom function `tabname()` dynamically renames the Termux side-drawer session tabs:
 * **Usage:** Run `tabname <custom name>` to rename the current tab.
