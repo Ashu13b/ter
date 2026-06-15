@@ -9,10 +9,7 @@ fi
 if [ "$TMUX_AUTOSTART" != "false" ]; then
 
 if [ -z "$TMUX" ] && [ -n "$PS1" ]; then
-    if tmux has-session -t main 2>/dev/null; then
-        exec tmux attach-session -t main
-    else
-        exec tmux new-session -s main
-    fi
+    # Always start a new independent session instead of attaching to a mirrored one
+    exec tmux new-session
 fi
 fi
