@@ -7,24 +7,28 @@ export DISABLE_AUTO_TITLE="true"
 
 _ter_set_title() {
     local title="$1"
-    if [ -n "$ZSH_VERSION" ]; then
-        (
-            sleep 0.1
-            printf "\e]0;%s\a" "${title}"
-        ) < /dev/null 2>/dev/null &!
+    if [ -n "$TMUX" ]; then
+        tmux rename-window "${title}" 2>/dev/null || true
     else
-        (
-            sleep 0.1
-            printf "\e]0;%s\a" "${title}"
-        ) < /dev/null 2>/dev/null &
-        disown $! 2>/dev/null || true
+        if [ -n "$ZSH_VERSION" ]; then
+            (
+                sleep 0.1
+                printf "\e]0;%s\a" "${title}"
+            ) < /dev/null 2>/dev/null &!
+        else
+            (
+                sleep 0.1
+                printf "\e]0;%s\a" "${title}"
+            ) < /dev/null 2>/dev/null &
+            disown $! 2>/dev/null || true
+        fi
     fi
 }
 
 _ter_get_folder() {
     local folder; folder=$(basename "$PWD")
     [ "$folder" = "files" ] && folder="home"
-    echo "$folder"
+    echo "${folder}/"
 }
 
 tabname() {
@@ -44,10 +48,13 @@ _ter_precmd_title() {
     local prefix=""
     [ -n "$NEXUS_SERVICE_NAME" ] && prefix="$NEXUS_SERVICE_NAME:"
     
-    local env_prefix="u"
-    [ "$(uname -o 2>/dev/null)" = "Android" ] && env_prefix="t"
-    
-    _ter_set_title "${env_prefix}:${prefix}$(_ter_get_folder)"
+    if [ -n "$TMUX" ]; then
+        _ter_set_title "${prefix}$(_ter_get_folder)"
+    else
+        local env_prefix="u"
+        [ "$(uname -o 2>/dev/null)" = "Android" ] && env_prefix="t"
+        _ter_set_title "${env_prefix}:${prefix}$(_ter_get_folder)"
+    fi
 }
 
 _ter_preexec_title() {
@@ -58,10 +65,13 @@ _ter_preexec_title() {
     local prefix=""
     [ -n "$NEXUS_SERVICE_NAME" ] && prefix="$NEXUS_SERVICE_NAME:"
     
-    local env_prefix="u"
-    [ "$(uname -o 2>/dev/null)" = "Android" ] && env_prefix="t"
-    
-    _ter_set_title "${env_prefix}:${prefix}$(_ter_get_folder)⟩$cmd_name"
+    if [ -n "$TMUX" ]; then
+        _ter_set_title "${prefix}$(_ter_get_folder)⟩$cmd_name"
+    else
+        local env_prefix="u"
+        [ "$(uname -o 2>/dev/null)" = "Android" ] && env_prefix="t"
+        _ter_set_title "${env_prefix}:${prefix}$(_ter_get_folder)⟩$cmd_name"
+    fi
 }
 
 if [ -n "$ZSH_VERSION" ]; then
