@@ -43,7 +43,11 @@ _ter_precmd_title() {
     fi
     local prefix=""
     [ -n "$NEXUS_SERVICE_NAME" ] && prefix="$NEXUS_SERVICE_NAME:"
-    _ter_set_title "${prefix}$(_ter_get_folder)"
+    
+    local env_prefix="u"
+    [ "$(uname -o 2>/dev/null)" = "Android" ] && env_prefix="t"
+    
+    _ter_set_title "${env_prefix}:${prefix}$(_ter_get_folder)"
 }
 
 _ter_preexec_title() {
@@ -54,7 +58,10 @@ _ter_preexec_title() {
     local prefix=""
     [ -n "$NEXUS_SERVICE_NAME" ] && prefix="$NEXUS_SERVICE_NAME:"
     
-    _ter_set_title "${prefix}$(_ter_get_folder) ⟩ $cmd_name"
+    local env_prefix="u"
+    [ "$(uname -o 2>/dev/null)" = "Android" ] && env_prefix="t"
+    
+    _ter_set_title "${env_prefix}:${prefix}$(_ter_get_folder) ⟩ $cmd_name"
 }
 
 if [ -n "$ZSH_VERSION" ]; then
