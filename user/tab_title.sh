@@ -61,7 +61,7 @@ _ter_preexec_title() {
     local env_prefix="u"
     [ "$(uname -o 2>/dev/null)" = "Android" ] && env_prefix="t"
     
-    _ter_set_title "${env_prefix}:${prefix}$(_ter_get_folder) ⟩ $cmd_name"
+    _ter_set_title "${env_prefix}:${prefix}$(_ter_get_folder)⟩$cmd_name"
 }
 
 if [ -n "$ZSH_VERSION" ]; then
