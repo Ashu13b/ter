@@ -2,10 +2,17 @@
 # Automatically launches the tabbed tmux interface on startup
 # if we aren't already inside a tmux session.
 
+if [ -f "$HOME/.config/ter/startup.conf" ]; then
+    source "$HOME/.config/ter/startup.conf"
+fi
+
+if [ "$TMUX_AUTOSTART" != "false" ]; then
+
 if [ -z "$TMUX" ] && [ -n "$PS1" ]; then
     if tmux has-session -t main 2>/dev/null; then
         exec tmux attach-session -t main
     else
         exec tmux new-session -s main
     fi
+fi
 fi
