@@ -38,12 +38,12 @@ tabname() {
 
 _ter_precmd_title() {
     if [ -n "$MANUAL_TAB_NAME" ]; then
-        _ter_set_title "ter:$MANUAL_TAB_NAME"
+        _ter_set_title "$MANUAL_TAB_NAME"
         return
     fi
     local prefix=""
     [ -n "$NEXUS_SERVICE_NAME" ] && prefix="$NEXUS_SERVICE_NAME:"
-    _ter_set_title "ter:${prefix}$(_ter_get_folder)"
+    _ter_set_title "${prefix}$(_ter_get_folder)"
 }
 
 _ter_preexec_title() {
@@ -54,7 +54,7 @@ _ter_preexec_title() {
     local prefix=""
     [ -n "$NEXUS_SERVICE_NAME" ] && prefix="$NEXUS_SERVICE_NAME:"
     
-    _ter_set_title "ter:${prefix}$(_ter_get_folder) ⟩ $cmd_name"
+    _ter_set_title "${prefix}$(_ter_get_folder) ⟩ $cmd_name"
 }
 
 if [ -n "$ZSH_VERSION" ]; then
