@@ -17,6 +17,44 @@ EOF
     # Read current state
     source "$conf"
 
+    # Help screen
+    if [ "$1" = "-h" ] || [ "$1" = "--help" ] || [ "$1" = "help" ]; then
+        echo ""
+        echo -e "\033[1;36m  ⌨️  TER OS — Quick Reference\033[0m"
+        echo -e "\033[1;36m  ━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+        echo ""
+        echo -e "\033[1;33m  TMUX SHORTCUTS (Prefix: ~)\033[0m"
+        echo "  ~ c      New tab"
+        echo "  ~ n / p  Next / Prev tab"
+        echo "  ~ |      Split vertical"
+        echo "  ~ -      Split horizontal"
+        echo "  ~ ←↑↓→   Jump splits"
+        echo "  ~ x      Close split/tab"
+        echo "  ~ m      Mouse ON/OFF"
+        echo "  Tap ⏭    Cycle tabs"
+        echo ""
+        echo -e "\033[1;33m  KEYBOARD (Swipe Up)\033[0m"
+        echo "  ~ ↑      |  (pipe)"
+        echo "  ESC ↑    exit"
+        echo "  / ↑      Ctrl+C"
+        echo "  ssh ↑    portal"
+        echo "  p ↑      clear"
+        echo ""
+        echo -e "\033[1;33m  TER COMMANDS\033[0m"
+        echo "  ter           Settings panel"
+        echo "  ter toggle    tmux|welcome|status"
+        echo "  re            Reload shell"
+        echo "  tabname       Rename tab"
+        echo "  optimize      BG stability"
+        echo "  adbcon        ADB connect"
+        echo "  scan          Network scan"
+        echo "  apps          App registry"
+        echo ""
+        echo -e "\033[1;36m  📖 Full manual: cat ~/.shell.d/docs/cli_manual.md\033[0m"
+        echo ""
+        return
+    fi
+
     # Handle toggles
     if [ "$1" = "toggle" ]; then
         case "$2" in
