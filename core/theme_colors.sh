@@ -1,2 +1,2 @@
-export NEXUS_P_LINE='7'
-export NEXUS_P_ACCENT='3'
+export TER_P_LINE='7'
+export TER_P_ACCENT='3'

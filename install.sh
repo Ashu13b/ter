@@ -18,6 +18,7 @@ mkdir -p "$HOME/.local/bin"
 info "Deploying shell modules..."
 for dir in core network user docs; do
     if [ -d "$REPO_DIR/$dir" ]; then
+        rm -rf "$TARGET/$dir/"*
         cp -r "$REPO_DIR/$dir/"* "$TARGET/$dir/" 2>/dev/null || true
     fi
 done

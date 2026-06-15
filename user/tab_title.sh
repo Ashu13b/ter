@@ -23,7 +23,7 @@ tabname() {
             prefix="$SESSION:"
         elif [ -n "$TAB_NAME" ]; then
             prefix="$TAB_NAME:"
-        elif [ -n "$NEXUS_SERVICE_NAME" ]; then
+        elif [ -n "$NEXUS_SERVICE_NAME" ]; then  # Set by NEXUS app when running services
             prefix="$NEXUS_SERVICE_NAME:"
         fi
         title="ter:${prefix}${folder}"
@@ -31,19 +31,15 @@ tabname() {
 
     if [ -n "$ZSH_VERSION" ]; then
         (
-            for i in 1 2 3 4 5; do
-                sleep 1
-                printf "\e]0;%s\a" "${title}"
-            done
+            sleep 0.5
+            printf "\e]0;%s\a" "${title}"
         ) < /dev/null 2>/dev/null &!
     else
         (
-            for i in 1 2 3 4 5; do
-                sleep 1
-                printf "\e]0;%s\a" "${title}"
-            done
+            sleep 0.5
+            printf "\e]0;%s\a" "${title}"
         ) < /dev/null 2>/dev/null &
-        disown %+ 2>/dev/null || disown $! 2>/dev/null || true
+        disown $! 2>/dev/null || true
     fi
     hash -r 2>/dev/null
 }

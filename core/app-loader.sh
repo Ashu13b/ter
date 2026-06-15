@@ -4,9 +4,9 @@
 if [ -d "$HOME/.shell.d/apps" ]; then
     for _app_dir in "$HOME/.shell.d/apps"/*/; do
         [ -d "$_app_dir" ] || continue
-        for _app_f in $(find "$_app_dir" -maxdepth 1 -name "*.sh" | sort); do
+        while IFS= read -r _app_f; do
             source "$_app_f"
-        done
+        done < <(find "$_app_dir" -maxdepth 1 -name "*.sh" | sort)
     done
     unset _app_dir _app_f
 fi

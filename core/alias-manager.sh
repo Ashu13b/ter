@@ -1,10 +1,10 @@
 #!/bin/bash
-# 🛠️ NEXUS OS: Alias Manager
-# Part of NEXUS OS Core - Manages ~/.shell.d/user/aliases.sh
+# 🛠️ TER: Alias Manager
+# Part of TER Core - Manages ~/.shell.d/user/aliases.sh
 
 alias_manager_help() {
     echo -e "\e[34m╔════════════════════════════════════════════╗\e[0m"
-    echo -e "\e[34m║\e[0m \e[32mNEXUS OS ALIAS MANAGER (am)\e[0m               \e[34m║\e[0m"
+    echo -e "\e[34m║\e[0m \e[32mTER ALIAS MANAGER (am)\e[0m               \e[34m║\e[0m"
     echo -e "\e[34m╠════════════════════════════════════════════╣\e[0m"
     echo -e "\e[34m║\e[0m \e[33mam list\e[0m   - Show all custom aliases        \e[34m║\e[0m"
     echo -e "\e[34m║\e[0m \e[33mam add\e[0m    - Interactively add a new alias  \e[34m║\e[0m"
@@ -27,6 +27,7 @@ alias_manager_add() {
         echo "alias $name='$cmd'" >> ~/.shell.d/user/aliases.sh
         echo -e "\e[32m✔ Added alias $name for '$cmd'\e[0m"
         source ~/.shell.d/user/aliases.sh
+        echo -e "\e[33m⚠ Note: This alias is saved to the deployed copy. To persist across reinstalls, also add it to ~/ter/user/aliases.sh\e[0m"
     else
         echo -e "\e[31m✘ Error: Name and command cannot be empty.\e[0m"
     fi

@@ -1,25 +1,10 @@
 import subprocess, sys, re, os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from adb_common import get_adb_device
 
 def make_link(url, text):
     return f"\033]8;;{url}\033\\{text}\033]8;;\033\\"
 
-def get_adb_device():
-    try:
-        proc = subprocess.run(["adb", "devices"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=5)
-        devices = []
-        for line in proc.stdout.splitlines()[1:]:
-            if line.strip() and "device" in line and not "unauthorized" in line:
-                parts = line.split()
-                if parts:
-                    devices.append(parts[0])
-        if "127.0.0.1:5555" in devices:
-            return "127.0.0.1:5555"
-        for d in devices:
-            if "emulator" in d:
-                return d
-        return devices[0] if devices else None
-    except Exception:
-        return None
 
 def run_adb(args):
     device = get_adb_device()
@@ -97,7 +82,8 @@ def export_apk(pkg):
     print(f"📥 Pulling APK from: {base_path}...")
     
     # We run adb pull directly
-    cmd = ["adb", "-s", "127.0.0.1:5555", "pull", base_path, f"./{outfile}"]
+    device = get_adb_device()
+    cmd = ["adb", "-s", device, "pull", base_path, f"./{outfile}"]
     try:
         proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         if proc.returncode == 0:

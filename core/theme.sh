@@ -1,9 +1,9 @@
-# ── NEXUS HUD Prompt (Dynamic Theme S2 Trench) ──
+# ── TER HUD Prompt (Dynamic Theme S2 Trench) ──
 
 # Load dynamic colors if they exist, fallback to Nord blue (4) and Green (2)
 [ -f ~/.shell.d/core/theme_colors.sh ] && source ~/.shell.d/core/theme_colors.sh
-L_CLR=${NEXUS_P_LINE:-4}
-A_CLR=${NEXUS_P_ACCENT:-2}
+L_CLR=${TER_P_LINE:-4}
+A_CLR=${TER_P_ACCENT:-2}
 
 _p_git() {
     local branch; branch=$(git branch --show-current 2>/dev/null)
@@ -38,7 +38,7 @@ _set_terminal_title() {
             prefix="$SESSION:"
         elif [ -n "$TAB_NAME" ]; then
             prefix="$TAB_NAME:"
-        elif [ -n "$NEXUS_SERVICE_NAME" ]; then
+        elif [ -n "$NEXUS_SERVICE_NAME" ]; then  # Set by NEXUS app when running services
             prefix="$NEXUS_SERVICE_NAME:"
         fi
         title="ter:${prefix}${folder}"

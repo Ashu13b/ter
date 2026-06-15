@@ -2,7 +2,7 @@
 
 # Helper: Find the real local subnet
 _scan_get_subnet() {
-    python -c "
+    python3 -c "
 import subprocess, re
 try:
     out = subprocess.check_output(['ifconfig'], stderr=subprocess.STDOUT).decode()

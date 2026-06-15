@@ -1,4 +1,6 @@
 import subprocess, sys, re, os, json, time
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from adb_common import get_adb_device, run_adb as _run_adb
 
 TASK_FILE = os.path.expanduser("~/.termux/bg_tasks.json")
 LOG_DIR = os.path.expanduser("~/.termux/bg_logs")
@@ -6,38 +8,12 @@ LOG_DIR = os.path.expanduser("~/.termux/bg_logs")
 def make_link(url, text):
     return f"\033]8;;{url}\033\\{text}\033]8;;\033\\"
 
-def get_adb_device():
-    try:
-        proc = subprocess.run(["adb", "devices"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=5)
-        devices = []
-        for line in proc.stdout.splitlines()[1:]:
-            if line.strip() and "device" in line and not "unauthorized" in line:
-                parts = line.split()
-                if parts:
-                    devices.append(parts[0])
-        if "127.0.0.1:5555" in devices:
-            return "127.0.0.1:5555"
-        for d in devices:
-            if "emulator" in d:
-                return d
-        return devices[0] if devices else None
-    except Exception:
-        return None
+def run_adb(args, device=None):
+    return _run_adb(args, device=device)
 
-def run_adb(args):
-    device = get_adb_device()
-    if not device:
-        return "", "No active ADB device found", -1
-    cmd = ["adb", "-s", device] + args
-    try:
-        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=15)
-        return proc.stdout.replace('\r', ''), proc.stderr.replace('\r', ''), proc.returncode
-    except Exception as e:
-        return "", str(e), -1
-
-def get_wake_lock_status():
+def get_wake_lock_status(device=None):
     # Query dumpsys power to see if com.termux holds a wake lock
-    stdout, _, _ = run_adb(["shell", "dumpsys power"])
+    stdout, _, _ = run_adb(["shell", "dumpsys power"], device=device)
     in_wake_locks = False
     for line in stdout.splitlines():
         if "Wake Locks: size=" in line:
@@ -51,13 +27,13 @@ def get_wake_lock_status():
                 in_wake_locks = False
     return False
 
-def check_battery_optimization():
-    stdout, _, _ = run_adb(["shell", "dumpsys deviceidle whitelist"])
+def check_battery_optimization(device=None):
+    stdout, _, _ = run_adb(["shell", "dumpsys deviceidle whitelist"], device=device)
     return "com.termux" in stdout
 
-def check_phantom_processes():
-    stdout_enabled, _, _ = run_adb(["shell", "settings get global settings_enable_monitor_phantom_procs"])
-    stdout_max, _, _ = run_adb(["shell", "device_config get activity_manager max_phantom_processes"])
+def check_phantom_processes(device=None):
+    stdout_enabled, _, _ = run_adb(["shell", "settings get global settings_enable_monitor_phantom_procs"], device=device)
+    stdout_max, _, _ = run_adb(["shell", "device_config get activity_manager max_phantom_processes"], device=device)
     
     enabled = stdout_enabled.strip().lower() != "false"
     max_val = stdout_max.strip()
@@ -76,9 +52,10 @@ def check_phantom_processes():
     return False, "RESTRICTED (32)"
 
 def show_status(full=False):
-    wl = get_wake_lock_status()
-    phantom_opt, phantom_raw = check_phantom_processes()
-    battery_opt = check_battery_optimization()
+    device = get_adb_device()
+    wl = get_wake_lock_status(device=device)
+    phantom_opt, phantom_raw = check_phantom_processes(device=device)
+    battery_opt = check_battery_optimization(device=device)
     
     if not full:
         # Compact one-line startup summary
