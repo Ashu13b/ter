@@ -91,6 +91,23 @@ done
 
 command -v termux-reload-settings &>/dev/null && termux-reload-settings
 
+# Install pre-commit smoke hook (idempotent).
+HOOK="$REPO_DIR/.git/hooks/pre-commit"
+if [ -d "$REPO_DIR/.git" ] && [ ! -e "$HOOK" -o ! -s "$HOOK" ] || ! grep -q "smoke.sh" "$HOOK" 2>/dev/null; then
+    cat > "$HOOK" << 'HOOK_EOF'
+#!/usr/bin/env bash
+# Auto-installed by ter/install.sh — runs shell smoke test before commit.
+REPO="$(git rev-parse --show-toplevel)"
+[ -x "$REPO/smoke.sh" ] || exit 0
+"$REPO/smoke.sh" >/dev/null 2>&1 || {
+    echo "✗ pre-commit: smoke.sh failed. Run 'bash smoke.sh' to see details."
+    exit 1
+}
+HOOK_EOF
+    chmod +x "$HOOK"
+    success "Pre-commit smoke hook installed."
+fi
+
 manual_path="$HOME/.shell.d/docs/cli_manual.md"
 
 echo -e "\n\e[1;32m✔ TER environment installed successfully!\e[0m"

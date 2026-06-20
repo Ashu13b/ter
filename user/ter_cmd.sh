@@ -74,6 +74,8 @@ EOF
         echo "  ter toggle    tmux|welcome|status"
         echo "  ter theme     Switch eye-preserving themes"
         echo "  ter doctor    Check repo vs deployed drift"
+        echo "  ter sync      Copy drifted runtime files back to repo"
+        echo "  ter update    git pull + redeploy"
         echo "  re            Reload shell"
         echo "  tabname       Rename tab"
         echo "  optimize      BG stability"
@@ -120,6 +122,38 @@ EOF
         else
             echo -e "\n  \033[1;33m$diffs difference(s) found.\033[0m Run 'bash ~/ter/install.sh' to redeploy.\n"
         fi
+        return
+    fi
+
+    # Reverse drift: copy drifted runtime files back into the repo.
+    if [ "$1" = "sync" ]; then
+        local repo="$HOME/ter"
+        local live="$HOME/.shell.d"
+        local count=0
+        echo -e "\n\033[1;36m  🔄 TER Sync — runtime → repo\033[0m"
+        for dir in core network user docs; do
+            [ -d "$repo/$dir" ] || continue
+            while IFS= read -r f; do
+                rel="${f#$live/$dir/}"
+                src="$repo/$dir/$rel"
+                if [ -e "$src" ] && ! cmp -s "$f" "$src"; then
+                    cp "$f" "$src"
+                    echo "  copied  $dir/$rel"
+                    count=$((count+1))
+                fi
+            done < <(find "$live/$dir" -type f 2>/dev/null)
+        done
+        echo -e "  \033[1;32m✓ $count file(s) synced.\033[0m\n"
+        return
+    fi
+
+    # Pull from GitHub and redeploy.
+    if [ "$1" = "update" ]; then
+        local repo="$HOME/ter"
+        echo -e "\n\033[1;36m  ⬇  TER Update\033[0m"
+        ( cd "$repo" && git pull --ff-only ) || { echo "git pull failed"; return 1; }
+        ( cd "$repo" && bash install.sh ) || return 1
+        echo -e "  \033[1;32m✓ Updated. Run 're' or open a new terminal.\033[0m\n"
         return
     fi
 
