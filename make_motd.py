@@ -15,7 +15,7 @@ def main():
     
     # Title
     out.append(f"{GRAY}╭─────────────────────────────────────────────────────────────────╮{RESET}")
-    out.append(f"{GRAY}│{RESET}  {CYAN}▀█▀ █▀▀ █▀█   █▀█ █▀{RESET}  {YELLOW}v1.1{RESET}                                  {GRAY}│{RESET}")
+    out.append(f"{GRAY}│{RESET}  {CYAN}▀█▀ █▀▀ █▀█   █▀█ █▀{RESET}  {YELLOW}v1.2{RESET}                                  {GRAY}│{RESET}")
     out.append(f"{GRAY}│{RESET}  {CYAN} █  ██  █▀▄   █▄█ ▄█{RESET}  {DIM}Type 'welcome' for dashboard{RESET}            {GRAY}│{RESET}")
     out.append(f"{GRAY}├─────────────────────────────────────────────────────────────────┤{RESET}")
     
@@ -37,7 +37,7 @@ def main():
 
     out.append(make_row(("re", "Reload"), ("scan", "Find IPs"), ("watch", "Monitor")))
     out.append(make_row(("up", "Update"), ("apps", "Modules"), ("portal", "Web GUI")))
-    out.append(make_row(("cls", "Clear"), ("ts", "Tnl Logs"), ("cld2net", "Cloud Tnl")))
+    out.append(make_row(("cls", "Clear"), ("ts", "Themes"), ("cld2net", "Cloud Tnl")))
     out.append(make_row(("cd", "Back"), ("adbcon", "Wizard"), ("lcl2net", "Local Tnl")))
 
     out.append(f"{GRAY}├─────────────────────────────────────────────────────────────────┤{RESET}")

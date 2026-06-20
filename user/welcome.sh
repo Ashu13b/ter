@@ -10,7 +10,7 @@ welcome() {
         done
     fi
 
-    echo -e "\n${C_MAGENTA}───${C_RESET}  ${C_BOLD}${C_CYAN}TER OS${C_RESET} ${C_DIM}v${TER_VERSION:-1.1}${C_RESET}  ${C_MAGENTA}────────────────────────────────────────${C_RESET}"
+    echo -e "\n${C_MAGENTA}───${C_RESET}  ${C_BOLD}${C_CYAN}TER OS${C_RESET} ${C_DIM}v${TER_VERSION:-1.2}${C_RESET}  ${C_MAGENTA}────────────────────────────────────────${C_RESET}"
     echo -e "  ${C_BOLD}WELCOME, ${C_YELLOW}${upper_name}${C_RESET}"
     echo -e "  ${C_DIM}IP:${C_RESET} ${C_GREEN}${ip}${C_RESET}  ${C_DIM}|  Time:${C_RESET} ${C_BLUE}${dt}${C_RESET}  ${C_DIM}|  Apps:${C_RESET} ${C_CYAN}${app_count}${C_RESET}"
     echo -e "${C_MAGENTA}────────────────────────────────────────────────────────────${C_RESET}"

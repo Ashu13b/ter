@@ -9,9 +9,14 @@ _ter_apply_theme() {
     local name="$5"
 
     local conf_file="$HOME/.tmux.conf"
-    local repo_conf="/data/data/com.termux/files/home/ter/.tmux.conf"
+    local repo_conf="$HOME/ter/.tmux.conf"
 
-    for file in "$conf_file" "$repo_conf"; do
+    # ~/.tmux.conf is a symlink to repo_conf (install.sh); editing the repo is
+    # sufficient. Fall back to editing both if the symlink isn't set up yet.
+    local targets="$repo_conf"
+    [ ! -L "$conf_file" ] && [ -f "$conf_file" ] && targets="$conf_file $repo_conf"
+
+    for file in $targets; do
         [ -f "$file" ] || continue
         sed -i -E "s/status-left \"#\[range=user\|new_win,fg=colour[0-9]+,bold\]/status-left \"#\[range=user\|new_win,fg=colour$active_fg,bold\]/" "$file"
         sed -i -E "s/status-right ' #\[fg=colour[0-9]+,bg=default,bold\]/status-right ' #\[fg=colour$active_fg,bg=default,bold\]/" "$file"
@@ -68,6 +73,7 @@ EOF
         echo "  ter           Settings panel"
         echo "  ter toggle    tmux|welcome|status"
         echo "  ter theme     Switch eye-preserving themes"
+        echo "  ter doctor    Check repo vs deployed drift"
         echo "  re            Reload shell"
         echo "  tabname       Rename tab"
         echo "  optimize      BG stability"
@@ -77,6 +83,43 @@ EOF
         echo ""
         echo -e "\033[1;36m  📖 Full manual: cat ~/.shell.d/docs/cli_manual.md\033[0m"
         echo ""
+        return
+    fi
+
+    # Drift detector: compare repo source vs deployed runtime
+    if [ "$1" = "doctor" ]; then
+        local repo="$HOME/ter"
+        local live="$HOME/.shell.d"
+        local diffs=0
+        echo -e "\n\033[1;36m  🩺 TER Doctor — repo vs deployed\033[0m"
+        echo -e "\033[1;36m  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+        for dir in core network user docs; do
+            [ -d "$repo/$dir" ] || continue
+            while IFS= read -r f; do
+                rel="${f#$repo/$dir/}"
+                target="$live/$dir/$rel"
+                if [ ! -e "$target" ]; then
+                    echo -e "  \033[1;33m+ missing\033[0m  $dir/$rel"
+                    diffs=$((diffs+1))
+                elif ! cmp -s "$f" "$target"; then
+                    echo -e "  \033[1;31m≠ drift  \033[0m  $dir/$rel"
+                    diffs=$((diffs+1))
+                fi
+            done < <(find "$repo/$dir" -type f)
+        done
+        # Reverse: files in live but not in repo (excluding apps/)
+        for dir in core network user docs; do
+            [ -d "$live/$dir" ] || continue
+            while IFS= read -r f; do
+                rel="${f#$live/$dir/}"
+                [ -e "$repo/$dir/$rel" ] || { echo -e "  \033[1;35m? orphan \033[0m  $dir/$rel"; diffs=$((diffs+1)); }
+            done < <(find "$live/$dir" -type f)
+        done
+        if [ "$diffs" -eq 0 ]; then
+            echo -e "  \033[1;32m✓ clean — repo and runtime match.\033[0m\n"
+        else
+            echo -e "\n  \033[1;33m$diffs difference(s) found.\033[0m Run 'bash ~/ter/install.sh' to redeploy.\n"
+        fi
         return
     fi
 

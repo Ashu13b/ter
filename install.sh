@@ -17,10 +17,17 @@ mkdir -p "$HOME/.local/bin"
 
 info "Deploying shell modules..."
 for dir in core network user docs; do
-    if [ -d "$REPO_DIR/$dir" ]; then
-        rm -rf "$TARGET/$dir/"*
-        cp -r "$REPO_DIR/$dir/"* "$TARGET/$dir/" 2>/dev/null || true
-    fi
+    src="$REPO_DIR/$dir"
+    dst="$TARGET/$dir"
+    [ -d "$src" ] || continue
+    # Safety: only operate on paths under TARGET.
+    case "$dst" in
+        "$TARGET"/*) ;;
+        *) info "Skipping $dir (unsafe target: $dst)"; continue ;;
+    esac
+    # Clear only managed entries; never touch apps/ (third-party registrations).
+    find "$dst" -mindepth 1 -maxdepth 1 ! -name 'apps' -exec rm -rf {} +
+    cp -r "$src"/. "$dst"/ 2>/dev/null || true
 done
 success "Shell modules and docs deployed to $TARGET"
 
@@ -31,10 +38,23 @@ if [ -f "$REPO_DIR/termux.properties" ]; then
 fi
 
 if [ -f "$REPO_DIR/.tmux.conf" ]; then
-    cp "$REPO_DIR/.tmux.conf" "$HOME/.tmux.conf"
-    success "Tmux configuration deployed."
+    # Symlink so 'ter theme' only has one file to write and edits stay in sync.
+    if [ -L "$HOME/.tmux.conf" ]; then
+        ln -sfn "$REPO_DIR/.tmux.conf" "$HOME/.tmux.conf"
+        success "Tmux config symlinked → repo."
+    elif [ -f "$HOME/.tmux.conf" ]; then
+        mv "$HOME/.tmux.conf" "$HOME/.tmux.conf.bak.$(date +%s)"
+        ln -s "$REPO_DIR/.tmux.conf" "$HOME/.tmux.conf"
+        success "Tmux config: backed up old, symlinked → repo."
+    else
+        ln -s "$REPO_DIR/.tmux.conf" "$HOME/.tmux.conf"
+        success "Tmux config symlinked → repo."
+    fi
 fi
 
+if [ -f "$REPO_DIR/make_motd.py" ]; then
+    (cd "$REPO_DIR" && python3 make_motd.py >/dev/null 2>&1) && success "MOTD regenerated."
+fi
 if [ -f "$REPO_DIR/motd" ]; then
     MOTD_TARGET="/data/data/com.termux/files/usr/etc/motd"
     if [ -w "$MOTD_TARGET" ]; then
@@ -44,24 +64,30 @@ if [ -f "$REPO_DIR/motd" ]; then
 fi
 
 LOADER_MARKER="SHELL.D Modular Loader"
-if ! grep -q "$LOADER_MARKER" "$HOME/.bashrc" 2>/dev/null; then
-    info "Adding module loader to .bashrc..."
-    cat >> "$HOME/.bashrc" << 'LOADER'
-
+LOADER_BLOCK='
 # ── SHELL.D Modular Loader ──
-export PATH="$HOME/.local/bin:$PATH"
-for dir in core network user; do
-    if [ -d "$HOME/.shell.d/$dir" ]; then
-        for f in $(find "$HOME/.shell.d/$dir" -maxdepth 1 -name "*.sh" | sort); do
-            source "$f"
-        done
+if [ -z "$TER_LOADED" ]; then
+    export TER_LOADED=1
+    export PATH="$HOME/.local/bin:$PATH"
+    for dir in core network user; do
+        if [ -d "$HOME/.shell.d/$dir" ]; then
+            for f in $(find "$HOME/.shell.d/$dir" -maxdepth 1 -name "*.sh" | sort); do
+                source "$f"
+            done
+        fi
+    done
+fi'
+
+for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
+    [ -f "$rc" ] || continue
+    if grep -q "$LOADER_MARKER" "$rc" 2>/dev/null; then
+        info "Loader already present in $(basename "$rc")"
+    else
+        info "Adding module loader to $(basename "$rc")..."
+        printf '%s\n' "$LOADER_BLOCK" >> "$rc"
+        success "Loader added to $(basename "$rc")"
     fi
 done
-LOADER
-    success "Loader added to .bashrc"
-else
-    info "Loader already present in .bashrc"
-fi
 
 command -v termux-reload-settings &>/dev/null && termux-reload-settings
 

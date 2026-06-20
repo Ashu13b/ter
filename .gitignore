@@ -1,0 +1,5 @@
+# Generated artifact (rebuilt by make_motd.py / install.sh)
+motd
+
+# Local backups
+*.bak.*

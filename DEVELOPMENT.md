@@ -7,7 +7,7 @@ This document captures the full development context for a new AI agent or develo
 ## Project Identity
 
 - **Name**: TER (Termux Environment Repository)
-- **Version**: 1.1
+- **Version**: 1.2
 - **Repo**: `~/ter` → pushed to GitHub as [Ashu13b/ter](https://github.com/Ashu13b/ter)
 - **Deploy target**: `~/.shell.d/` (sourced by `.bashrc` and `.zshrc`)
 - **Device**: OnePlus 13R (Snapdragon 8 Gen 3, Adreno 750 GPU)
@@ -52,7 +52,6 @@ Third-party projects (like NEXUS) register themselves under `~/.shell.d/apps/<na
 - `manifest.json` — metadata (name, version, commands)
 - `aliases.sh` — app-specific aliases/functions (auto-sourced)
 - `complete.sh` — tab completion definitions (auto-sourced)
-- `welcome.hook` — startup hook contributions (currently unused)
 
 NEXUS is the only registered app. Its files live in `~/nexus/app/` and are deployed via `~/nexus/setup.sh` into `~/.shell.d/apps/nexus/`.
 
@@ -92,7 +91,7 @@ These redundant aliases were cleaned up:
 ## Recent Changes (v1.1 → v1.2)
 
 ### ⌨️ Touch Keyboard Customizations (`termux.properties`)
-* **Soft Keyboard Lockout Resolution:** When Tmux mouse support is on (`mouse on`), clicking the screen fails to trigger the soft keyboard. Resolved by mapping the first key in the row to `KEYBOARD` on tap (toggles soft keyboard) and `DRAWER` on swipe-up.
+* **Soft Keyboard Lockout Resolution:** When Tmux mouse support is on (`mouse on`), clicking the screen fails to trigger the soft keyboard. Resolved by mapping the first key in the row to `DRAWER` on tap (opens side pane) and `KEYBOARD` on swipe-up (toggles soft keyboard).
 * **Stable 11-key Row:** Ergonomically placed keys for mobile thumbs, with no accidental triggers for `ssh` or `exit`.
 
 ### 🪟 Tmux Status Bar & Border Optimization (`.tmux.conf`)

@@ -1,4 +1,4 @@
-# 🌟 TER: Termux Custom Environment (v1.1)
+# 🌟 TER: Termux Custom Environment (v1.2)
 
 TER is a portable, independent Termux environment configuration repository. It installs a modular shell structure, custom keyboard layout, and a modular app-registration system. It works completely standalone or can be integrated with other projects (like NEXUS) via the registry system.
 
@@ -76,7 +76,6 @@ Each registered app should contain a `manifest.json` file in its registration di
 ### Component Files
 Within `~/.shell.d/apps/<app-name>/`, you can drop:
 - `*.sh` files (e.g. `aliases.sh`, `complete.sh`): These are automatically sourced on terminal startup.
-- `welcome.hook`: A shell snippet contributing additional output to startup (currently unused but supported).
 
 ### Management Command
 - `apps list` or `apps`: Displays all currently registered applications, versions, and commands.
@@ -89,7 +88,7 @@ Your touch keyboard has a custom extra-keys row with popups (swipe up on a key t
 
 | Normal Key | Swipe Up (Popup) Action | Purpose |
 |:---|:---|:---|
-| **DRAWER** | KEYBOARD | Open drawer / Toggle software keyboard |
+| **DRAWER** | KEYBOARD | Tap: Open side drawer / Swipe up: Toggle software keyboard |
 | **TAB** | SHIFT TAB | Standard tab completion |
 | **CTRL** | ALT | Terminal Control/Alt modifiers |
 | **~** | `lcl2lan` | Auto-trigger local network bridge tunnel |
