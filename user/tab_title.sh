@@ -47,13 +47,20 @@ _ter_precmd_title() {
     fi
     local prefix=""
     [ -n "$NEXUS_SERVICE_NAME" ] && prefix="$NEXUS_SERVICE_NAME:"
-    
-    if [ -n "$TMUX" ]; then
-        _ter_set_title "${prefix}$(_ter_get_folder)"
+    _ter_set_title "${prefix}$(_ter_short_pwd)"
+}
+
+_ter_short_pwd() {
+    # Show parent/child for context (e.g. "home/ter") without overflowing.
+    local cur; cur=$(basename "$PWD" 2>/dev/null)
+    local par; par=$(basename "$(dirname "$PWD")" 2>/dev/null)
+    [ "$cur" = "/" ] || [ -z "$cur" ] && cur="root"
+    [ "$cur" = "files" ] && cur="home"
+    [ "$par" = "files" ] && par="home"
+    if [ -n "$par" ] && [ "$par" != "/" ] && [ "$par" != "." ]; then
+        echo "${par}/${cur}"
     else
-        local env_prefix="u"
-        [ "$(uname -o 2>/dev/null)" = "Android" ] && env_prefix="t"
-        _ter_set_title "${env_prefix}:${prefix}$(_ter_get_folder)"
+        echo "$cur"
     fi
 }
 
@@ -65,35 +72,26 @@ _ter_preexec_title() {
     local cmd_arg="${cmd#* }"
     [ "$cmd_arg" = "$cmd" ] && cmd_arg=""
 
-    # For commands where the first arg is the useful context (ssh host,
-    # vim file, etc.), surface it. For agents/REPLs (agy, claude, python,
-    # node, bash), surface the current folder instead.
+    # Pick a useful detail per command class. Always lead with cmd_name
+    # so a narrow side panel truncating from the right still shows it.
     local detail
     case "$cmd_name" in
-        ssh|scp|mosh|ping|curl|wget|adb)
+        ssh|scp|mosh|ping|adb)
             detail="${cmd_arg%% *}"
             ;;
         vim|nvim|nano|cat|less|bat|tail|head|code)
             detail=$(basename "${cmd_arg%% *}" 2>/dev/null)
             ;;
-        agy|claude|python|python3|node|bash|zsh|sh|tmux)
-            detail=$(basename "$PWD")
-            ;;
         *)
-            detail=$(basename "$PWD")
+            detail=$(_ter_short_pwd)
             ;;
     esac
-    [ -z "$detail" ] && detail=$(basename "$PWD")
+    [ -z "$detail" ] && detail=$(_ter_short_pwd)
 
     local prefix=""
     [ -n "$NEXUS_SERVICE_NAME" ] && prefix="$NEXUS_SERVICE_NAME:"
 
-    # Lead with the command so narrow side-panel widths still show it.
-    if [ -n "$TMUX" ]; then
-        _ter_set_title "${prefix}${cmd_name}·${detail}"
-    else
-        _ter_set_title "${prefix}${cmd_name}·${detail}"
-    fi
+    _ter_set_title "${prefix}${cmd_name}: ${detail}"
 }
 
 if [ -n "$ZSH_VERSION" ]; then
