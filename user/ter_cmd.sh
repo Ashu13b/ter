@@ -86,6 +86,7 @@ EOF
         echo "  ter sync      Copy drifted runtime files back to repo"
         echo "  ter update    git pull + redeploy"
         echo "  ter snapshot  Diagnose pkg/storage state → device.lock"
+        echo "  ter info      One-screen status (version, drift, pkgs)"
         echo "  re            Reload shell"
         echo "  tabname       Rename tab"
         echo "  optimize      BG stability"
@@ -194,6 +195,43 @@ EOF
         else
             echo -e "  \033[1;32m✓ all required packages present.\033[0m\n"
         fi
+        return
+    fi
+
+    # One-screen "where am I" status.
+    if [ "$1" = "info" ]; then
+        local repo="$HOME/ter"
+        local sha tag dirty drift theme banner
+        sha=$(git -C "$repo" rev-parse --short HEAD 2>/dev/null || echo "?")
+        tag=$(git -C "$repo" describe --tags --always 2>/dev/null || echo "$sha")
+        git -C "$repo" diff --quiet 2>/dev/null && dirty="clean" || dirty="dirty"
+        # Drift = number of files differing between repo and runtime.
+        drift=0
+        for d in core network user docs; do
+            [ -d "$repo/$d" ] && [ -d "$HOME/.shell.d/$d" ] || continue
+            while IFS= read -r f; do
+                rel="${f#$repo/$d/}"
+                t="$HOME/.shell.d/$d/$rel"
+                [ -e "$t" ] && cmp -s "$f" "$t" || drift=$((drift+1))
+            done < <(find "$repo/$d" -type f 2>/dev/null)
+        done
+        theme=$(sed -n -E 's/.*Soothing eye-preserving pane styles \((.*) - Transparent Backgrounds\).*/\1/p' "$HOME/.tmux.conf" 2>/dev/null)
+        banner=$([ "${OPTIMIZE_STATUS:-true}" = "true" ] && echo "on" || echo "off")
+        local pkgs_missing="?"
+        if [ -f "$repo/packages.txt" ] && command -v pkg >/dev/null 2>&1; then
+            want=$(grep -vE '^\s*(#|$)' "$repo/packages.txt" | sort -u)
+            have=$(pkg list-installed 2>/dev/null | sed -n 's|/.*||p' | sort -u)
+            pkgs_missing=$(comm -23 <(echo "$want") <(echo "$have") | grep -vc '^$')
+        fi
+        echo -e "\n\033[1;36m  ℹ  TER Info\033[0m"
+        echo -e "  \033[1;33mversion\033[0m   ${TER_VERSION:-?}  (${tag}, ${dirty})"
+        echo -e "  \033[1;33mrepo\033[0m      $repo"
+        echo -e "  \033[1;33mtheme\033[0m     ${theme:-default}"
+        echo -e "  \033[1;33mdrift\033[0m     $drift file(s) differ from runtime"
+        echo -e "  \033[1;33mpackages\033[0m  $pkgs_missing missing (vs packages.txt)"
+        echo -e "  \033[1;33mbanner\033[0m    $banner"
+        echo -e "  \033[1;33mshell\033[0m     ${CURRENT_SHELL:-?}  pid=$$"
+        echo -e "  \033[1;33mtmux\033[0m      ${TMUX:+attached}${TMUX:-detached}\n"
         return
     fi
 
