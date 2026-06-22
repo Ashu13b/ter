@@ -40,6 +40,17 @@ tabname() {
     _ter_precmd_title
 }
 
+_ter_where() {
+    # Identify the shell environment: local termux, ssh-into-remote, or unknown.
+    if [ -n "$SSH_CONNECTION" ] || [ -n "$SSH_CLIENT" ]; then
+        echo "ssh:${HOSTNAME:-remote}"
+    elif [ "$(uname -o 2>/dev/null)" = "Android" ]; then
+        echo "termux"
+    else
+        echo "$(uname -s 2>/dev/null | tr '[:upper:]' '[:lower:]')"
+    fi
+}
+
 _ter_precmd_title() {
     if [ -n "$MANUAL_TAB_NAME" ]; then
         _ter_set_title "$MANUAL_TAB_NAME"
@@ -47,7 +58,8 @@ _ter_precmd_title() {
     fi
     local prefix=""
     [ -n "$NEXUS_SERVICE_NAME" ] && prefix="$NEXUS_SERVICE_NAME:"
-    _ter_set_title "${prefix}$(_ter_short_pwd)"
+    # Idle: where / folder
+    _ter_set_title "${prefix}$(_ter_where) / $(_ter_short_pwd)"
 }
 
 _ter_short_pwd() {
@@ -72,11 +84,20 @@ _ter_preexec_title() {
     local cmd_arg="${cmd#* }"
     [ "$cmd_arg" = "$cmd" ] && cmd_arg=""
 
-    # Pick a useful detail per command class. Always lead with cmd_name
-    # so a narrow side panel truncating from the right still shows it.
+    # `where` defaults to the local shell environment, but ssh-outbound
+    # overrides it so the title reflects the remote host being entered.
+    local where; where=$(_ter_where)
     local detail
     case "$cmd_name" in
-        ssh|scp|mosh|ping|adb)
+        ssh|mosh)
+            # Pull host from "user@host" or "host" forms.
+            local target="${cmd_arg%% *}"
+            local host="${target##*@}"
+            where="ssh:${host:-remote}"
+            detail=""
+            ;;
+        scp|rsync)
+            where="ssh"
             detail="${cmd_arg%% *}"
             ;;
         vim|nvim|nano|cat|less|bat|tail|head|code)
@@ -91,8 +112,7 @@ _ter_preexec_title() {
     local prefix=""
     [ -n "$NEXUS_SERVICE_NAME" ] && prefix="$NEXUS_SERVICE_NAME:"
 
-    # For long-running agent sessions, append a 3-digit shell PID suffix
-    # so multiple Claude/agy sessions are distinguishable in the side panel.
+    # Agent sessions get a PID suffix so multiple instances stay distinct.
     local suffix=""
     case "$cmd_name" in
         claude|agy|ai|aichat|aider)
@@ -100,7 +120,8 @@ _ter_preexec_title() {
             ;;
     esac
 
-    _ter_set_title "${prefix}${cmd_name}: ${detail}${suffix}"
+    # Active: cmd / where / detail
+    _ter_set_title "${prefix}${cmd_name} / ${where} / ${detail}${suffix}"
 }
 
 if [ -n "$ZSH_VERSION" ]; then
