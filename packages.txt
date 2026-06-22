@@ -2,38 +2,69 @@
 # Format: one package per line, `#` for comments. Blank lines OK.
 # install.sh installs these via `pkg install -y` on a fresh Termux.
 #
-# Run `ter snapshot` for a full dump of everything currently installed
-# (saved to device.lock) — this file is the curated subset TER needs.
+# Goal: bootstrap.sh + this file should be enough to take a brand-new
+# Termux install and turn it into your working environment. `ter snapshot`
+# dumps everything currently installed to device.lock for diagnostics —
+# this file is the curated set TER assumes is present.
 
-# Shell + version control
+# ── Shell + version control + identity ──
 zsh
 bash
 git
+gh                  # GitHub CLI — auth, PRs, gists
+gnupg               # signing commits, secrets
+openssh             # ssh client + sshd
+ca-certificates     # TLS trust store for curl/gh/gcloud bootstrap
 
-# Python (optimize.py, adb-audit.py, adb-manage.py, make_motd.py)
-python
+# ── Languages ──
+python              # optimize.py, adb-audit.py, adb-manage.py, make_motd.py
+nodejs              # Claude Code, many CLI tools
 
-# Network + SSH + tmux
-openssh
+# ── Network + tmux ──
 tmux
-nmap
-iproute2
-net-tools
+nmap                # scan net
+iproute2            # ss, ip
+net-tools           # netstat (fallback)
 curl
+wget
+termux-am-socket    # required by termux-* commands
 
-# JSON parsing (app-loader could use it as fast fallback for python3)
+# ── JSON / data ──
 jq
 
-# ADB / Android tooling (adbcon, adb-*)
+# ── ADB / Android tooling (adbcon, adb-*) ──
 android-tools
 
-# Termux integration (termux-clipboard-*, termux-battery-status, termux-notification, etc.)
-termux-api
-termux-tools
+# ── Termux integration ──
+termux-api          # clipboard, battery, notifications, sensors
+termux-tools        # termux-setup-storage, termux-info
+termux-services     # background daemons (sshd autostart, etc.)
 
-# General utilities pulled in by various scripts
-procps
+# ── Editors (pick at least one — vim is least surprising) ──
+vim
+nano
+
+# ── Quality-of-life utilities ──
+procps              # ps, kill, pgrep
 findutils
 coreutils
 file
-ncurses-utils
+ncurses-utils       # tput, clear
+less
+tree
+ncdu                # disk usage
+htop                # process viewer
+bat                 # syntax-highlighted cat
+eza                 # modern ls
+fzf                 # fuzzy finder
+zoxide              # smart cd (used by your .bashrc)
+man                 # local manpages
+proot-distro        # run glibc apps (e.g. Google Cloud CLI)
+
+# ── NOT in Termux repos — install separately if needed ──
+# - gcloud CLI: install inside `proot-distro login debian` then
+#     pkg install google-cloud-cli
+#   or use the official curl-based installer (lives outside this list).
+# - claude-code: npm install -g @anthropic-ai/claude-code  (after nodejs)
+# - Anthropic API key, Google service account JSON, etc.: managed by
+#   `ter secrets` (planned) rather than tracked here.
