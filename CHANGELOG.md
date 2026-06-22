@@ -5,6 +5,19 @@ All notable changes to TER are documented here. Older history lives in
 
 ## [Unreleased]
 
+### Added
+- `ter wizard` — interactive first-run setup: storage permission, git
+  identity, SSH key generation, `gh auth login`, secrets scaffold.
+- `secrets.template` — curated list of expected env-var names. `ter wizard`
+  copies it to `~/.config/ter/secrets.env` (gitignored); `core/01-config.sh`
+  auto-sources that file each shell.
+- `ter doctor` now warns when secrets named in the template are unset in
+  the environment.
+- `extras/install-claude.sh` — installs Claude Code CLI via npm.
+- `extras/install-gcloud.sh` — provisions Google Cloud CLI inside a
+  proot-distro Debian rootfs and writes a thin `gcloud` wrapper on the
+  Termux side.
+
 ## [1.2] — 2026-06-22
 
 ### Added

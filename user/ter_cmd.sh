@@ -80,6 +80,7 @@ EOF
         echo ""
         echo -e "\033[1;33m  TER COMMANDS\033[0m"
         echo "  ter           Settings panel"
+        echo "  ter wizard    First-run setup (git, ssh, gh, secrets)"
         echo "  ter toggle    tmux|welcome|status"
         echo "  ter theme     Switch eye-preserving themes"
         echo "  ter doctor    Check repo vs deployed drift"
@@ -129,10 +130,27 @@ EOF
             done < <(find "$live/$dir" -type f)
         done
         if [ "$diffs" -eq 0 ]; then
-            echo -e "  \033[1;32m✓ clean — repo and runtime match.\033[0m\n"
+            echo -e "  \033[1;32m✓ clean — repo and runtime match.\033[0m"
         else
-            echo -e "\n  \033[1;33m$diffs difference(s) found.\033[0m Run 'bash ~/ter/install.sh' to redeploy.\n"
+            echo -e "\n  \033[1;33m$diffs difference(s) found.\033[0m Run 'bash ~/ter/install.sh' to redeploy."
         fi
+        # Secrets check: warn on vars listed in template but unset in environment.
+        if [ -f "$HOME/ter/secrets.template" ]; then
+            local unset_n=0 missing_vars=""
+            while IFS= read -r line; do
+                local var="${line%%=*}"
+                [ -z "$var" ] && continue
+                if [ -z "$(printenv "$var" 2>/dev/null)" ]; then
+                    unset_n=$((unset_n+1))
+                    missing_vars="$missing_vars $var"
+                fi
+            done < <(grep -E '^[A-Z_][A-Z0-9_]*=' "$HOME/ter/secrets.template")
+            if [ "$unset_n" -gt 0 ]; then
+                echo -e "\n  \033[1;33m⚠ $unset_n secret(s) unset:\033[0m$missing_vars"
+                echo -e "    Edit ~/.config/ter/secrets.env (copy from secrets.template)."
+            fi
+        fi
+        echo ""
         return
     fi
 
@@ -232,6 +250,72 @@ EOF
         echo -e "  \033[1;33mbanner\033[0m    $banner"
         echo -e "  \033[1;33mshell\033[0m     ${CURRENT_SHELL:-?}  pid=$$"
         echo -e "  \033[1;33mtmux\033[0m      ${TMUX:+attached}${TMUX:-detached}\n"
+        return
+    fi
+
+    # First-run interactive setup. Idempotent — re-run any time.
+    if [ "$1" = "wizard" ]; then
+        echo -e "\n\033[1;36m  🧙 TER Wizard — first-run setup\033[0m"
+        echo -e "\033[1;36m  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+
+        # Storage permission.
+        if [ ! -d "$HOME/storage" ]; then
+            echo "→ requesting Android storage permission"
+            command -v termux-setup-storage >/dev/null && termux-setup-storage
+        else
+            echo "✓ storage permission granted"
+        fi
+
+        # Git identity.
+        local g_name g_email
+        g_name=$(git config --global user.name 2>/dev/null)
+        g_email=$(git config --global user.email 2>/dev/null)
+        if [ -z "$g_name" ]; then
+            read -p "git user.name: " g_name
+            [ -n "$g_name" ] && git config --global user.name "$g_name"
+        else
+            echo "✓ git user.name=$g_name"
+        fi
+        if [ -z "$g_email" ]; then
+            read -p "git user.email: " g_email
+            [ -n "$g_email" ] && git config --global user.email "$g_email"
+        else
+            echo "✓ git user.email=$g_email"
+        fi
+
+        # SSH key.
+        if [ ! -f "$HOME/.ssh/id_ed25519" ]; then
+            read -p "Generate ed25519 SSH key? [Y/n] " yn
+            case "$yn" in
+                ""|[Yy]*) ssh-keygen -t ed25519 -C "${g_email:-termux}" -f "$HOME/.ssh/id_ed25519" -N "";;
+            esac
+        else
+            echo "✓ ssh key present: ~/.ssh/id_ed25519"
+        fi
+
+        # GitHub auth.
+        if command -v gh >/dev/null 2>&1; then
+            if ! gh auth status >/dev/null 2>&1; then
+                read -p "Run 'gh auth login' now? [Y/n] " yn
+                case "$yn" in ""|[Yy]*) gh auth login;; esac
+            else
+                echo "✓ gh authenticated"
+            fi
+        fi
+
+        # Secrets scaffold.
+        local sec_dir="$HOME/.config/ter"
+        local sec_file="$sec_dir/secrets.env"
+        if [ ! -f "$sec_file" ] && [ -f "$HOME/ter/secrets.template" ]; then
+            mkdir -p "$sec_dir"
+            cp "$HOME/ter/secrets.template" "$sec_file"
+            chmod 600 "$sec_file"
+            echo "→ created $sec_file — edit to fill in values"
+        else
+            echo "✓ secrets file: $sec_file"
+        fi
+
+        echo -e "\n  \033[1;32m✓ Wizard done.\033[0m Open a new shell or run 're'.\n"
         return
     fi
 
