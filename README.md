@@ -151,9 +151,22 @@ On every new interactive terminal session, a **compact one-line** stability summ
 
 ## 🚀 Installation
 
-To deploy this environment configuration:
+**Fresh Termux (one-liner):**
 ```bash
-git clone <this-repo-url> ~/ter
+curl -fsSL https://raw.githubusercontent.com/Ashu13b/ter/main/bootstrap.sh | bash
+```
+This installs git, clones the repo, installs required packages (`packages.txt`), requests storage permission, deploys configs, and runs the smoke test.
+
+**Already cloned:**
+```bash
+git clone https://github.com/Ashu13b/ter.git ~/ter
 bash ~/ter/install.sh
 ```
+
+**Day-to-day:**
+- `ter update` — pull and redeploy
+- `ter doctor` — check repo vs deployed drift
+- `ter sync` — copy drifted runtime files back into the repo
+- `ter snapshot` — diagnostic device dump → `device.lock`
+
 Then reload your terminal or run `re`.

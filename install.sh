@@ -10,6 +10,21 @@ TARGET="$HOME/.shell.d"
 
 echo -e "\n\e[1;35m══ TER: Termux Environment Installer ══\e[0m\n"
 
+# Install required packages (idempotent — pkg is a no-op if already present).
+if [ -f "$REPO_DIR/packages.txt" ] && command -v pkg >/dev/null 2>&1; then
+    PKGS=$(grep -vE '^\s*(#|$)' "$REPO_DIR/packages.txt" | tr '\n' ' ')
+    if [ -n "$PKGS" ] && [ "${TER_SKIP_PKG:-0}" != "1" ]; then
+        info "Ensuring packages: $PKGS"
+        pkg install -y $PKGS >/dev/null 2>&1 && success "Packages OK." || info "pkg install reported errors (continuing)."
+    fi
+fi
+
+# Storage permission (cd ws / cd dl depend on ~/storage existing).
+if [ ! -d "$HOME/storage" ] && command -v termux-setup-storage >/dev/null 2>&1; then
+    info "Requesting storage permission (accept the Android prompt)..."
+    termux-setup-storage
+fi
+
 info "Creating directory layout..."
 mkdir -p "$TARGET"/{core,network,user,apps,docs}
 mkdir -p "$HOME/.termux"

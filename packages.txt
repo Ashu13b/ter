@@ -1,0 +1,39 @@
+# TER essential packages
+# Format: one package per line, `#` for comments. Blank lines OK.
+# install.sh installs these via `pkg install -y` on a fresh Termux.
+#
+# Run `ter snapshot` for a full dump of everything currently installed
+# (saved to device.lock) — this file is the curated subset TER needs.
+
+# Shell + version control
+zsh
+bash
+git
+
+# Python (optimize.py, adb-audit.py, adb-manage.py, make_motd.py)
+python
+
+# Network + SSH + tmux
+openssh
+tmux
+nmap
+iproute2
+net-tools
+curl
+
+# JSON parsing (app-loader could use it as fast fallback for python3)
+jq
+
+# ADB / Android tooling (adbcon, adb-*)
+android-tools
+
+# Termux integration (termux-clipboard-*, termux-battery-status, termux-notification, etc.)
+termux-api
+termux-tools
+
+# General utilities pulled in by various scripts
+procps
+findutils
+coreutils
+file
+ncurses-utils
