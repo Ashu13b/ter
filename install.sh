@@ -96,7 +96,24 @@ fi'
 for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
     [ -f "$rc" ] || continue
     if grep -q "$LOADER_MARKER" "$rc" 2>/dev/null; then
-        info "Loader already present in $(basename "$rc")"
+        if grep -q "TER_LOADED" "$rc" 2>/dev/null; then
+            info "Loader (guarded) already present in $(basename "$rc")"
+        else
+            info "Upgrading unguarded loader in $(basename "$rc")..."
+            # Strip old loader block (from marker line to the closing 'done').
+            python3 - "$rc" << 'PY'
+import sys, re
+path = sys.argv[1]
+text = open(path).read()
+pat = re.compile(r'\n?# ── SHELL\.D Modular Loader ──\n(?:export PATH=.*?\n)?for dir in core network user; do\n.*?\ndone\n?',
+                 re.DOTALL)
+# Strip ALL matching unguarded blocks; the guarded one (with TER_LOADED) won't match.
+new = pat.sub('\n', text)
+open(path, 'w').write(new)
+PY
+            printf '%s\n' "$LOADER_BLOCK" >> "$rc"
+            success "Loader upgraded in $(basename "$rc")"
+        fi
     else
         info "Adding module loader to $(basename "$rc")..."
         printf '%s\n' "$LOADER_BLOCK" >> "$rc"
