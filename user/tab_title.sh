@@ -91,7 +91,16 @@ _ter_preexec_title() {
     local prefix=""
     [ -n "$NEXUS_SERVICE_NAME" ] && prefix="$NEXUS_SERVICE_NAME:"
 
-    _ter_set_title "${prefix}${cmd_name}: ${detail}"
+    # For long-running agent sessions, append a 3-digit shell PID suffix
+    # so multiple Claude/agy sessions are distinguishable in the side panel.
+    local suffix=""
+    case "$cmd_name" in
+        claude|agy|ai|aichat|aider)
+            suffix=" #$(printf '%03d' "$(( $$ % 1000 ))")"
+            ;;
+    esac
+
+    _ter_set_title "${prefix}${cmd_name}: ${detail}${suffix}"
 }
 
 if [ -n "$ZSH_VERSION" ]; then
