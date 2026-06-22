@@ -59,18 +59,40 @@ _ter_precmd_title() {
 
 _ter_preexec_title() {
     if [ -n "$MANUAL_TAB_NAME" ]; then return; fi
-    
+
     local cmd="$1"
     local cmd_name="${cmd%% *}"
+    local cmd_arg="${cmd#* }"
+    [ "$cmd_arg" = "$cmd" ] && cmd_arg=""
+
+    # For commands where the first arg is the useful context (ssh host,
+    # vim file, etc.), surface it. For agents/REPLs (agy, claude, python,
+    # node, bash), surface the current folder instead.
+    local detail
+    case "$cmd_name" in
+        ssh|scp|mosh|ping|curl|wget|adb)
+            detail="${cmd_arg%% *}"
+            ;;
+        vim|nvim|nano|cat|less|bat|tail|head|code)
+            detail=$(basename "${cmd_arg%% *}" 2>/dev/null)
+            ;;
+        agy|claude|python|python3|node|bash|zsh|sh|tmux)
+            detail=$(basename "$PWD")
+            ;;
+        *)
+            detail=$(basename "$PWD")
+            ;;
+    esac
+    [ -z "$detail" ] && detail=$(basename "$PWD")
+
     local prefix=""
     [ -n "$NEXUS_SERVICE_NAME" ] && prefix="$NEXUS_SERVICE_NAME:"
-    
+
+    # Lead with the command so narrow side-panel widths still show it.
     if [ -n "$TMUX" ]; then
-        _ter_set_title "${prefix}$(_ter_get_folder)⟩$cmd_name"
+        _ter_set_title "${prefix}${cmd_name}·${detail}"
     else
-        local env_prefix="u"
-        [ "$(uname -o 2>/dev/null)" = "Android" ] && env_prefix="t"
-        _ter_set_title "${env_prefix}:${prefix}$(_ter_get_folder)⟩$cmd_name"
+        _ter_set_title "${prefix}${cmd_name}·${detail}"
     fi
 }
 
