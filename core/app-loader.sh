@@ -22,7 +22,7 @@ apps() {
         echo "Description:"
         echo "  Manages and lists registered shell integration applications."
         echo "  Apps are loaded dynamically from ~/.shell.d/apps/<app_name>/"
-        echo "  containing manifest.json, aliases, autocomplete, and welcome hooks."
+        echo "  containing manifest.json and any *.sh files to auto-source."
         echo ""
         return 0
     fi

@@ -47,6 +47,11 @@ for dir in core network user docs; do
 done
 success "Shell modules and docs deployed to $TARGET"
 
+# TER's own manifest — read by welcome.sh to render the command surface.
+if [ -f "$REPO_DIR/manifest.json" ]; then
+    cp "$REPO_DIR/manifest.json" "$TARGET/manifest.json"
+fi
+
 
 if [ -f "$REPO_DIR/termux.properties" ]; then
     cp "$REPO_DIR/termux.properties" "$HOME/.termux/termux.properties"
