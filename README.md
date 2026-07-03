@@ -55,6 +55,14 @@ All modular scripts are automatically sourced on terminal startup. They are orga
       * `-s, --standby <pkg>`  Tune app standby bucket state
       * `-e, --export <pkg>`   Extract and pull base APK file of an app
       * `-a, --autostart`      Manage boot-start autostart receivers
+  * `adb-apk [file|dir|query]` — Smart APK installer. `fzf`-powered
+    fuzzy pick from Downloads / workspace when called bare, batch
+    install for multiple files, `aapt` package-info preview,
+    friendly translation of `INSTALL_FAILED_*` errors, optional
+    post-install launch.
+    * Options:
+      * `-r`                   Reinstall (keep app data)
+      * `-f, --force`, `-y`    Skip confirmation prompt
 
 ---
 

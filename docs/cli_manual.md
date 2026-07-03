@@ -12,8 +12,10 @@ Welcome to the command line interface guide for the unified **TER OS** Termux en
 | `adb-sysinfo` | System | Audits device specs, battery level, temp, and top CPU processes | `adb-sysinfo -h` |
 | `adb-screengrab` | System | Instantly captures device screen, pulls image, and opens viewer | `adb-screengrab -h` |
 | `adb-manage` | Operations | Consolidated app management, standby controller, freezing, and APK export | `adb-manage -h` |
+| `adb-apk` | Operations | Smart APK sideloader: fuzzy pick, batch install, aapt preview, friendly errors, optional launch | `adb-apk -h` |
 | `adb-logcat` | Logging | Streams real-time Android logs with optional case-insensitive filter | `adb-logcat -h` |
 | `adb-audit` | Security | Comprehensive device security, hidden app, and privacy sensor auditer | `adb-audit -h` |
+| `dvop` | System | Toggles `development_settings_enabled` via ADB (on/off/toggle/status). `dvop off` confirms first — see caveat in README | `dvop status` |
 | `optimize` | Stability | Safely configures background process stability & runs background tasks | `optimize -h` |
 | `scan` | Security | Local subnet device discoverer, plain-text protocol sniffer, and vulnerability scanner | `scan -h` |
 | `am` | Utility | Interactive shell alias manager (list, add, edit, reload) | `am -h` / `am --help` |
@@ -62,6 +64,40 @@ adb-manage -f <package_name>
 # Unfreeze / Enable an application
 adb-manage -u <package_name>
 ```
+
+### 📦 Smart APK Installer (`adb-apk`)
+Fuzzy-picks APKs from `~/storage/downloads`, `/storage/emulated/0/workspace`, and `$HOME`, previews package info with `aapt`, installs one or many, translates `INSTALL_FAILED_*` errors into plain English, and optionally launches the app after install.
+```bash
+# Bare — fzf browser over Downloads / workspace / cwd
+adb-apk
+
+# Fuzzy search by name across the same paths
+adb-apk chrome
+
+# Install one or many APK files
+adb-apk app.apk
+adb-apk *.apk
+
+# Reinstall keeping app data (signature must match)
+adb-apk -r app.apk
+
+# Force / skip confirmation prompt
+adb-apk -f app.apk
+```
+Requires `fzf` for the browser mode. `dvop off` will kill the ADB
+channel — run `adbcon` first, and if you toggled dvop off see the
+recovery ladder printed by `adbcon`.
+
+### 🛠️ Developer Options Toggle (`dvop`)
+Flips the Android `development_settings_enabled` global via the current ADB session — hides Developer Options from banking / Play-Integrity / GPS-spoof checks with no phone reboot.
+```bash
+dvop status        # ON / OFF
+dvop on            # show Developer Options in Settings
+dvop off           # hide — prompts because Wireless Debugging dies with it
+dvop off -y        # skip the confirmation prompt
+dvop toggle        # flip whichever way makes sense
+```
+⚠ `dvop off` also disables Wireless Debugging → your ADB session dies. Recovery: on the phone re-enable Developer Options + Wireless Debugging, then run `adbcon`. See `docs/dvop-experiment-findings.md` for the full write-up on why no CLI-only self-recovery is possible on OxygenOS 15.
 
 ### 📋 Real-Time Log Viewer (`adb-logcat`)
 Streams Android system logs in real time. Can optionally filter stream lines by keywords.
