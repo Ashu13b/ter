@@ -150,6 +150,22 @@ EOF
                 echo -e "    Edit ~/.config/ter/secrets.env (copy from secrets.template)."
             fi
         fi
+        # Services health: sshd listener on the Termux default port.
+        # NEXUS and any inbound reverse-tunnel path assume :8022 is answering.
+        # A silent sshd is the exact failure mode that flapped NEXUS for hours.
+        if [ -f "$PREFIX/etc/ssh/sshd_config" ]; then
+            local sshd_port sshd_status
+            sshd_port=$(awk '/^Port /{print $2; exit}' "$PREFIX/etc/ssh/sshd_config")
+            sshd_port="${sshd_port:-8022}"
+            sshd_status=$(sv status sshd 2>/dev/null | awk '{print $1}')
+            if ! nc -z 127.0.0.1 "$sshd_port" 2>/dev/null; then
+                echo -e "\n  \033[1;33m⚠ sshd not listening on :$sshd_port\033[0m (sv: ${sshd_status:-unknown})"
+                echo -e "    Fix: \033[1;37msv up sshd\033[0m  (or \033[1;37msv restart sshd\033[0m)"
+                [ "$sshd_port" != "8022" ] && echo -e "    Note: NEXUS + adbcon expect :8022 — current config is :$sshd_port."
+            elif [ "$sshd_port" != "8022" ]; then
+                echo -e "\n  \033[1;33m⚠ sshd on non-default port :$sshd_port\033[0m — NEXUS assumes :8022."
+            fi
+        fi
         echo ""
         return
     fi
