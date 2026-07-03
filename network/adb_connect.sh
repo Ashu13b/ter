@@ -46,24 +46,47 @@ adbcon() {
     echo -e "   \e[90m  · Fresh pair needed: same Wi-Fi as Termux, then pick option 2 with the phone's pairing code.\e[0m\n"
 
     # 2. Check Network (Best Effort)
-    local IP
-    # Extract only Wi-Fi or Hotspot interfaces (wlan, ap, swlan), ignoring rmnet (mobile data)
-    IP=$(ifconfig 2>/dev/null | awk '/^(wlan|ap|swlan)/ {w=1} /^[^ \t]/ && !/^(wlan|ap|swlan)/ {w=0} w && /inet / {print $2}' | head -n 1)
+    local IP STA_IP AP_IP
+    # STA (client) — wlan0/wlan1: real Wi-Fi client link, only mode that unlocks Wireless Debugging.
+    STA_IP=$(ifconfig 2>/dev/null | awk '/^wlan/ {w=1} /^[^ \t]/ && !/^wlan/ {w=0} w && /inet / {print $2}' | head -n 1)
+    # AP (hotspot) — ap0/swlan0: phone is broadcasting, not joined as client. Doesn't help ADB.
+    AP_IP=$(ifconfig 2>/dev/null | awk '/^(ap|swlan)/ {w=1} /^[^ \t]/ && !/^(ap|swlan)/ {w=0} w && /inet / {print $2}' | head -n 1)
 
-    if [ -z "$IP" ]; then
-        IP=$(ip addr 2>/dev/null | grep -oP 'inet \K[0-9.]+' | grep -v '127.0.0.1' | head -n 1)
-    fi
-
-    if [ -z "$IP" ]; then
-        IP="192.168.1.1" # default fallback
-        echo -e "⚠️  \e[33mNo Wi-Fi detected automatically.\e[0m"
+    if [ -n "$STA_IP" ]; then
+        IP="$STA_IP"
+        echo -e "📡 \e[1;32mWi-Fi client link detected:\e[0m $IP"
+    elif [ -n "$AP_IP" ]; then
+        # Hotspot-only mode → Wireless Debugging refuses to activate. Abort with the reason.
+        echo -e "❌ \e[1;31mOnly hotspot (AP) interface active:\e[0m $AP_IP"
+        echo -e "   \e[90mAndroid's Wireless Debugging requires the phone to be a Wi-Fi CLIENT,\e[0m"
+        echo -e "   \e[90mnot an access point. Join a real Wi-Fi network (any SSID, no internet\e[0m"
+        echo -e "   \e[90mneeded), then rerun \`adbcon\`. See docs/dvop-experiment-findings.md.\e[0m"
+        return 1
     else
-        echo -e "📡 \e[1;32mNetwork detected:\e[0m IP address is $IP"
+        IP=$(ip addr 2>/dev/null | grep -oP 'inet \K[0-9.]+' | grep -v '127.0.0.1' | head -n 1)
+        if [ -z "$IP" ]; then
+            IP="192.168.1.1"
+            echo -e "⚠️  \e[33mNo Wi-Fi detected automatically — using fallback $IP.\e[0m"
+        else
+            echo -e "📡 \e[1;32mNetwork detected:\e[0m $IP"
+        fi
     fi
 
     echo -ne "👉 Phone IP [\e[1;33m$IP\e[0m] — press Enter to use this, or type a different IP: "
     read input_ip
+    local ORIG_IP="$IP"
     IP=${input_ip:-$IP}
+
+    # Subnet sanity check — if user typed an IP outside our /24, warn but don't block.
+    if [ -n "$STA_IP" ] && [ "$IP" != "$ORIG_IP" ]; then
+        local our_subnet="${STA_IP%.*}"
+        local their_subnet="${IP%.*}"
+        if [ "$our_subnet" != "$their_subnet" ]; then
+            echo -e "⚠️  \e[33mPhone IP $IP is outside our subnet ($our_subnet.0/24).\e[0m"
+            echo -e "   \e[90mLikely causes: different Wi-Fi networks, guest-network client isolation,\e[0m"
+            echo -e "   \e[90mor VLAN separation. Port scan will probably find nothing.\e[0m"
+        fi
+    fi
 
     echo -e "\n\e[1;35m[ REQUIRED PREPARATION ]\e[0m"
     echo -e "1. Go to phone \e[1;37mSettings\e[0m -> \e[1;37mDeveloper Options\e[0m."
@@ -89,18 +112,32 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=250) as e:
 
     local auto_connected=0
     local current_port=""
+    local pairing_revoked=0
     for port in $ports; do
         echo -e "🔌 Found port \e[1;33m$port\e[0m. Testing connection..."
         adb connect "$IP:$port" > /dev/null 2>&1
         sleep 0.5
-        if adb devices | grep -q "${IP}:${port}[[:space:]]*device"; then
+        local dev_line
+        dev_line=$(adb devices | grep "${IP}:${port}")
+        if echo "$dev_line" | grep -q "device$"; then
             auto_connected=1
             current_port=$port
+            break
+        elif echo "$dev_line" | grep -q "unauthorized"; then
+            # Pairing revoked/expired — retrying other ports on the same phone won't help.
+            echo -e "🔒 \e[1;33mPort $port is open but the pairing is no longer trusted.\e[0m"
+            adb disconnect "$IP:$port" > /dev/null 2>&1
+            pairing_revoked=1
             break
         else
             adb disconnect "$IP:$port" > /dev/null 2>&1
         fi
     done
+
+    if [ $pairing_revoked -eq 1 ]; then
+        echo -e "   \e[90mFresh pair needed — skipping remaining port probes.\e[0m\n"
+        wizard_choice="2"
+    fi
 
     if [ $auto_connected -eq 1 ]; then
         echo -e "\n✅ \e[1;32mAlready paired!\e[0m Connected on port \e[1;33m$current_port\e[0m."
@@ -203,9 +240,16 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=250) as e:
         local connect_ok=0
         for i in {1..3}; do
             sleep 1
-            if adb devices | grep -q "${IP}:${current_port}[[:space:]]*device"; then
+            local dev_line
+            dev_line=$(adb devices | grep "${IP}:${current_port}")
+            if echo "$dev_line" | grep -q "device$"; then
                 connect_ok=1
                 break
+            elif echo "$dev_line" | grep -q "unauthorized"; then
+                echo -e "\e[1;33m🔒 Connected but unauthorized — pairing was revoked or the phone doesn't recognise this Termux.\e[0m"
+                echo -e "   Re-run \`adbcon\` and pick fresh-pair mode."
+                adb disconnect "$IP:$current_port" > /dev/null 2>&1
+                return 1
             fi
             echo "Waiting for device to come online (attempt $i/3)..."
         done
