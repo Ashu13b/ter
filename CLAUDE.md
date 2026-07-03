@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-TER is a Termux shell environment (v1.3) for a single mobile device (OnePlus 13R, Zsh primary / Bash fallback). It is a *configuration* repo, not an application. Edits in `~/ter/` are deployed by copying files into the runtime directory `~/.shell.d/`.
+TER is a Termux shell environment (v1.4) for a single mobile device (OnePlus 13R, Zsh primary / Bash fallback). It is a *configuration* repo, not an application. Edits in `~/ter/` are deployed by copying files into the runtime directory `~/.shell.d/`.
 
 ## Core workflow
 

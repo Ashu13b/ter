@@ -1,4 +1,4 @@
-export TER_VERSION="1.3"
+export TER_VERSION="1.4"
 export TNL_REMOTE="ubu"; export TNL_DEF_FSERVER_PORT="6000"
 export NET_CHECK_TARGET="8.8.8.8"; export NET_CHECK_PORT="80"
 

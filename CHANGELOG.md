@@ -5,6 +5,8 @@ All notable changes to TER are documented here. Older history lives in
 
 ## [Unreleased]
 
+## [1.4] — 2026-07-03
+
 ### Changed
 - Rename `devopts` → `dvop` (shorter, matches muscle memory).
 - `dvop off` now confirms before flipping — the toggle also kills the
@@ -14,6 +16,16 @@ All notable changes to TER are documented here. Older history lives in
   when the loopback channel is dead.
 - `ter info` now shows ADB connection state and current `dvop` value so
   lockout risk is visible before you flip.
+- `adbcon` gained three detectable-precondition checks driven by the
+  dvop-experiments findings:
+  - Separates `wlan*` (STA / client link) from `ap*`/`swlan*` (hotspot).
+    If only AP is up, aborts early with the "join a real Wi-Fi network"
+    hint instead of wasting a 15s scan against the fallback IP.
+  - Warns when the user-supplied phone IP is outside our `/24`
+    (guest-network client isolation, VLAN split, wrong SSID).
+  - Treats `unauthorized` device state as a revoked pairing — skips
+    remaining port probes and retry loop, bounces straight to
+    fresh-pair mode.
 
 ### Docs
 - `docs/dvop-experiment-findings.md` — full write-up of the
