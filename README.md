@@ -170,7 +170,8 @@ ter wizard
 Walks through storage permission, git identity, SSH key, `gh auth login`, and scaffolds `~/.config/ter/secrets.env` from `secrets.template`.
 
 **Developer Options quick-toggle:**
-- `devopts on|off|toggle|status` — flips `development_settings_enabled` via `adbcon`. Effect is immediate (no phone reboot). Useful when a banking / Play-Integrity / GPS-spoof-detecting app refuses to run while dev options are visible.
+- `dvop on|off|toggle|status` — flips `development_settings_enabled` via `adbcon`. Effect is immediate (no phone reboot). Useful when a banking / Play-Integrity / GPS-spoof-detecting app refuses to run while dev options are visible.
+- ⚠ `dvop off` also disables Wireless Debugging → your ADB session dies. Recovery: on the phone re-enable Developer Options + Wireless Debugging, then run `adbcon`. New pairing (only if the port changed) also needs same Wi-Fi as Termux.
 
 **Day-to-day:**
 - `ter update` — pull and redeploy

@@ -40,7 +40,10 @@ adbcon() {
     # Clean up stale loopback entry so it doesn't interfere
     adb disconnect $LOCAL_LOOPBACK > /dev/null 2>&1
 
-    echo -e "⚠️  \e[33mBackground channel offline (Phone rebooted or ADB killed)\e[0m\n"
+    echo -e "⚠️  \e[33mBackground channel offline (Phone rebooted or ADB killed)\e[0m"
+    echo -e "   \e[90mRecovery ladder if this was a \`dvop off\`:\e[0m"
+    echo -e "   \e[90m  · Previously paired: turn Developer options ON, Wireless Debugging ON — reconnect below.\e[0m"
+    echo -e "   \e[90m  · Fresh pair needed: same Wi-Fi as Termux, then pick option 2 with the phone's pairing code.\e[0m\n"
 
     # 2. Check Network (Best Effort)
     local IP

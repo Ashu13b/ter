@@ -249,7 +249,18 @@ EOF
         echo -e "  \033[1;33mpackages\033[0m  $pkgs_missing missing (vs packages.txt)"
         echo -e "  \033[1;33mbanner\033[0m    $banner"
         echo -e "  \033[1;33mshell\033[0m     ${CURRENT_SHELL:-?}  pid=$$"
-        echo -e "  \033[1;33mtmux\033[0m      ${TMUX:+attached}${TMUX:-detached}\n"
+        echo -e "  \033[1;33mtmux\033[0m      ${TMUX:+attached}${TMUX:-detached}"
+        # ADB + dvop visibility so lockout risk is obvious before running `dvop off`.
+        if command -v adb >/dev/null 2>&1; then
+            local adb_state="disconnected" dvop_state="?"
+            if adb devices 2>/dev/null | grep -q "device$"; then
+                adb_state="connected"
+                dvop_state=$(adb shell settings get global development_settings_enabled 2>/dev/null | tr -d '\r')
+                [ "$dvop_state" = "1" ] && dvop_state="ON" || dvop_state="OFF"
+            fi
+            echo -e "  \033[1;33madb\033[0m       $adb_state  (dvop=$dvop_state)"
+        fi
+        echo ""
         return
     fi
 

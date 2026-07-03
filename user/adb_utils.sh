@@ -186,10 +186,20 @@ adb-audit() {
     python3 "$HOME/.shell.d/user/adb-audit.py" "$key"
 }
 
-# ── Developer Options quick-toggle ──
+# ── Developer Options quick-toggle (`dvop`) ──
 # Flips `development_settings_enabled` (the flag Play Integrity, GPS-spoof
 # detectors and most banking apps actually read). No phone reboot required.
-devopts() {
+#
+# CAUTION: `dvop off` also kills the Wireless Debugging daemon on most
+# Android builds, so it disconnects this ADB session. Recovery:
+#   Already paired once (usual case):
+#     1. Phone: Settings → Developer options → toggle ON (top switch)
+#     2. Phone: Wireless debugging → toggle ON
+#     3. Termux: run `adbcon` (reconnects on the same loopback port)
+#   Never paired before / port changed:
+#     4. Additionally: same Wi-Fi network as Termux, then `adbcon` option 2
+#        (pair) with the code shown on the phone.
+dvop() {
     local dev; dev=$(_get_adb_device)
     if [ -z "$dev" ]; then
         echo -e "${C_RED}❌ No active ADB device. Run adbcon first.${C_RESET}"
@@ -201,27 +211,40 @@ devopts() {
         adb -s "$dev" shell settings get global development_settings_enabled 2>/dev/null | tr -d '\r'
     }
 
+    local force=0
+    for a in "$@"; do [ "$a" = "-y" ] && force=1; done
+
     case "$1" in
         ""|status)
             local s; s=$(get_state)
-            [ "$s" = "1" ] && echo -e "devopts: ${C_GREEN}ON${C_RESET}" || echo -e "devopts: ${C_YELLOW}OFF${C_RESET}"
+            [ "$s" = "1" ] && echo -e "dvop: ${C_GREEN}ON${C_RESET}" || echo -e "dvop: ${C_YELLOW}OFF${C_RESET}"
             ;;
         on)
             adb -s "$dev" shell settings put global development_settings_enabled 1 >/dev/null
-            echo -e "devopts: ${C_GREEN}ON${C_RESET} (Settings menu will show Developer Options)"
+            echo -e "dvop: ${C_GREEN}ON${C_RESET} (Settings menu will show Developer Options)"
             ;;
         off)
+            if [ "$force" -ne 1 ]; then
+                echo -e "${C_YELLOW}⚠  This also disables Wireless Debugging — you will lose this ADB session.${C_RESET}"
+                echo "   Recovery (if previously paired): phone Settings → Developer options ON"
+                echo "   → Wireless debugging ON → run \`adbcon\`."
+                echo "   New pairing also needs same Wi-Fi + pairing code."
+                echo -n "   Continue? [y/N] "
+                read yn
+                case "$yn" in [Yy]*) ;; *) echo "Cancelled."; return 0;; esac
+            fi
             adb -s "$dev" shell settings put global development_settings_enabled 0 >/dev/null
-            echo -e "devopts: ${C_YELLOW}OFF${C_RESET} (hidden from apps — no reboot needed)"
+            echo -e "dvop: ${C_YELLOW}OFF${C_RESET} (hidden from apps — no reboot needed)"
             ;;
         toggle)
             local s; s=$(get_state)
-            if [ "$s" = "1" ]; then devopts off; else devopts on; fi
+            if [ "$s" = "1" ]; then dvop off; else dvop on; fi
             ;;
         -h|--help|help)
-            echo "Usage: devopts [on|off|toggle|status]"
+            echo "Usage: dvop [on|off|toggle|status]  [-y skip confirm on off]"
             echo "  Flips development_settings_enabled via ADB. Requires adbcon."
             echo "  Effect is immediate — no phone restart needed."
+            echo "  Warning: 'off' also stops Wireless Debugging → recover manually on phone."
             ;;
         *)
             echo "Unknown: $1  (use: on|off|toggle|status)"

@@ -4,7 +4,7 @@
 set -u
 
 REPO="$(cd "$(dirname "$0")" && pwd)"
-EXPECT="re cls scan adbcon optimize tabname apps ter devopts"
+EXPECT="re cls scan adbcon optimize tabname apps ter dvop"
 FAIL=0
 
 run_in() {

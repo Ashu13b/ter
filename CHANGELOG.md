@@ -5,6 +5,16 @@ All notable changes to TER are documented here. Older history lives in
 
 ## [Unreleased]
 
+### Changed
+- Rename `devopts` → `dvop` (shorter, matches muscle memory).
+- `dvop off` now confirms before flipping — the toggle also kills the
+  Wireless Debugging daemon, so the message spells out the phone-side
+  recovery ladder. Skip prompt with `dvop off -y`.
+- `adbcon` prints the recovery ladder (previously-paired vs fresh-pair)
+  when the loopback channel is dead.
+- `ter info` now shows ADB connection state and current `dvop` value so
+  lockout risk is visible before you flip.
+
 ## [1.3] — 2026-06-22
 
 ### Added
