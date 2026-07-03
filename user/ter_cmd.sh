@@ -105,18 +105,22 @@ EOF
         local repo="$HOME/ter"
         local live="$HOME/.shell.d"
         local diffs=0
-        echo -e "\n\033[1;36m  🩺 TER Doctor — repo vs deployed\033[0m"
-        echo -e "\033[1;36m  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+        local quiet=0
+        [ "$2" = "--quiet" ] || [ "$2" = "-q" ] && quiet=1
+        if [ "$quiet" -eq 0 ]; then
+            echo -e "\n\033[1;36m  🩺 TER Doctor — repo vs deployed\033[0m"
+            echo -e "\033[1;36m  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+        fi
         for dir in core network user docs; do
             [ -d "$repo/$dir" ] || continue
             while IFS= read -r f; do
                 rel="${f#$repo/$dir/}"
                 target="$live/$dir/$rel"
                 if [ ! -e "$target" ]; then
-                    echo -e "  \033[1;33m+ missing\033[0m  $dir/$rel"
+                    [ "$quiet" -eq 0 ] && echo -e "  \033[1;33m+ missing\033[0m  $dir/$rel"
                     diffs=$((diffs+1))
                 elif ! cmp -s "$f" "$target"; then
-                    echo -e "  \033[1;31m≠ drift  \033[0m  $dir/$rel"
+                    [ "$quiet" -eq 0 ] && echo -e "  \033[1;31m≠ drift  \033[0m  $dir/$rel"
                     diffs=$((diffs+1))
                 fi
             done < <(find "$repo/$dir" -type f)
@@ -126,13 +130,20 @@ EOF
             [ -d "$live/$dir" ] || continue
             while IFS= read -r f; do
                 rel="${f#$live/$dir/}"
-                [ -e "$repo/$dir/$rel" ] || { echo -e "  \033[1;35m? orphan \033[0m  $dir/$rel"; diffs=$((diffs+1)); }
+                if [ ! -e "$repo/$dir/$rel" ]; then
+                    [ "$quiet" -eq 0 ] && echo -e "  \033[1;35m? orphan \033[0m  $dir/$rel"
+                    diffs=$((diffs+1))
+                fi
             done < <(find "$live/$dir" -type f)
         done
-        if [ "$diffs" -eq 0 ]; then
-            echo -e "  \033[1;32m✓ clean — repo and runtime match.\033[0m"
-        else
-            echo -e "\n  \033[1;33m$diffs difference(s) found.\033[0m Run 'bash ~/ter/install.sh' to redeploy."
+        if [ "$quiet" -eq 0 ]; then
+            if [ "$diffs" -eq 0 ]; then
+                echo -e "  \033[1;32m✓ clean — repo and runtime match.\033[0m"
+            else
+                echo -e "\n  \033[1;33m$diffs difference(s) found.\033[0m Run 'bash ~/ter/install.sh' to redeploy."
+            fi
+        elif [ "$diffs" -gt 0 ]; then
+            echo -e "\033[1;33m⚠ ter doctor:\033[0m $diffs repo↔runtime drift(s) — run \`ter doctor\` for detail."
         fi
         # Secrets check: warn on vars listed in template but unset in environment.
         if [ -f "$HOME/ter/secrets.template" ]; then
@@ -146,8 +157,11 @@ EOF
                 fi
             done < <(grep -E '^[A-Z_][A-Z0-9_]*=' "$HOME/ter/secrets.template")
             if [ "$unset_n" -gt 0 ]; then
-                echo -e "\n  \033[1;33m⚠ $unset_n secret(s) unset:\033[0m$missing_vars"
-                echo -e "    Edit ~/.config/ter/secrets.env (copy from secrets.template)."
+                if [ "$quiet" -eq 0 ]; then
+                    echo -e "\n  \033[1;33m⚠ $unset_n secret(s) unset:\033[0m$missing_vars"
+                    echo -e "    Edit ~/.config/ter/secrets.env (copy from secrets.template)."
+                fi
+                # secrets absence is intentional-ish — don't nag in quiet mode.
             fi
         fi
         # Services health: sshd listener on the Termux default port.
@@ -159,14 +173,22 @@ EOF
             sshd_port="${sshd_port:-8022}"
             sshd_status=$(sv status sshd 2>/dev/null | awk '{print $1}')
             if ! nc -z 127.0.0.1 "$sshd_port" 2>/dev/null; then
-                echo -e "\n  \033[1;33m⚠ sshd not listening on :$sshd_port\033[0m (sv: ${sshd_status:-unknown})"
-                echo -e "    Fix: \033[1;37msv up sshd\033[0m  (or \033[1;37msv restart sshd\033[0m)"
-                [ "$sshd_port" != "8022" ] && echo -e "    Note: NEXUS + adbcon expect :8022 — current config is :$sshd_port."
+                if [ "$quiet" -eq 1 ]; then
+                    echo -e "\033[1;33m⚠ ter doctor:\033[0m sshd not listening on :$sshd_port — run \`sv up sshd\`."
+                else
+                    echo -e "\n  \033[1;33m⚠ sshd not listening on :$sshd_port\033[0m (sv: ${sshd_status:-unknown})"
+                    echo -e "    Fix: \033[1;37msv up sshd\033[0m  (or \033[1;37msv restart sshd\033[0m)"
+                    [ "$sshd_port" != "8022" ] && echo -e "    Note: NEXUS + adbcon expect :8022 — current config is :$sshd_port."
+                fi
             elif [ "$sshd_port" != "8022" ]; then
-                echo -e "\n  \033[1;33m⚠ sshd on non-default port :$sshd_port\033[0m — NEXUS assumes :8022."
+                if [ "$quiet" -eq 1 ]; then
+                    echo -e "\033[1;33m⚠ ter doctor:\033[0m sshd on :$sshd_port (NEXUS expects :8022)."
+                else
+                    echo -e "\n  \033[1;33m⚠ sshd on non-default port :$sshd_port\033[0m — NEXUS assumes :8022."
+                fi
             fi
         fi
-        echo ""
+        [ "$quiet" -eq 0 ] && echo ""
         return
     fi
 
