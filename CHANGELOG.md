@@ -15,6 +15,17 @@ All notable changes to TER are documented here. Older history lives in
 - `ter info` now shows ADB connection state and current `dvop` value so
   lockout risk is visible before you flip.
 
+### Docs
+- `docs/dvop-experiment-findings.md` — full write-up of the
+  `feature/dvop-experiments` investigation, now merged to main:
+  why self-granting `WRITE_SECURE_SETTINGS` is blocked on OxygenOS 15
+  (three walls), why post-reboot recovery needs a real Wi-Fi STA (the
+  phone's own hotspot can't rescue itself — single-radio constraint),
+  and why "fake Wi-Fi" workarounds (VPN, USB-tether, Wi-Fi Direct) all
+  miss the `TRANSPORT_WIFI` gate in `AdbDebuggingManager`.
+  Conclusion: keep `dvop` as-is; the 7-tap dance stays the only
+  unrooted escape from a self-inflicted lockout.
+
 ## [1.3] — 2026-06-22
 
 ### Added
