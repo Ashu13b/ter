@@ -185,3 +185,245 @@ adb-audit() {
 
     python3 "$HOME/.shell.d/user/adb-audit.py" "$key"
 }
+
+# ── Developer Options quick-toggle ──
+# Flips `development_settings_enabled` (the flag Play Integrity, GPS-spoof
+# detectors and most banking apps actually read). No phone reboot required.
+devopts() {
+    local dev; dev=$(_get_adb_device)
+    if [ -z "$dev" ]; then
+        echo -e "${C_RED}❌ No active ADB device. Run adbcon first.${C_RESET}"
+        return 1
+    fi
+
+    local get_state
+    get_state() {
+        adb -s "$dev" shell settings get global development_settings_enabled 2>/dev/null | tr -d '\r'
+    }
+
+    case "$1" in
+        ""|status)
+            local s; s=$(get_state)
+            [ "$s" = "1" ] && echo -e "devopts: ${C_GREEN}ON${C_RESET}" || echo -e "devopts: ${C_YELLOW}OFF${C_RESET}"
+            ;;
+        on)
+            adb -s "$dev" shell settings put global development_settings_enabled 1 >/dev/null
+            echo -e "devopts: ${C_GREEN}ON${C_RESET} (Settings menu will show Developer Options)"
+            ;;
+        off)
+            adb -s "$dev" shell settings put global development_settings_enabled 0 >/dev/null
+            echo -e "devopts: ${C_YELLOW}OFF${C_RESET} (hidden from apps — no reboot needed)"
+            ;;
+        toggle)
+            local s; s=$(get_state)
+            if [ "$s" = "1" ]; then devopts off; else devopts on; fi
+            ;;
+        -h|--help|help)
+            echo "Usage: devopts [on|off|toggle|status]"
+            echo "  Flips development_settings_enabled via ADB. Requires adbcon."
+            echo "  Effect is immediate — no phone restart needed."
+            ;;
+        *)
+            echo "Unknown: $1  (use: on|off|toggle|status)"
+            return 1
+            ;;
+    esac
+}
+
+# ── 7. Smart APK Installer ──
+adb-apk() {
+    if [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
+        echo -e "${C_BOLD}${C_CYAN}─── SMART APK INSTALLER HELP ───${C_RESET}"
+        echo "Usage: adb-apk [file.apk ...]"
+        echo ""
+        echo "Description:"
+        echo "  Install APK files to your device via ADB with friendly"
+        echo "  error handling and convenience features."
+        echo ""
+        echo "Options:"
+        echo "  adb-apk                   Browse & pick APKs from Downloads"
+        echo "  adb-apk app.apk           Install a single APK"
+        echo "  adb-apk *.apk             Install multiple APKs"
+        echo "  adb-apk chrome            Fuzzy search by name"
+        echo "  adb-apk /path/to/dir      Search inside a directory"
+        echo "  adb-apk -r app.apk        Reinstall (keep app data)"
+        echo "  adb-apk -f app.apk        Force install (skip confirmation)"
+        echo "  adb-apk -h, --help        Show this help"
+        return 0
+    fi
+
+    local dev; dev=$(_get_adb_device)
+    if [ -z "$dev" ]; then
+        echo -e "${C_RED}❌ No active ADB device found. Run ${C_BOLD}adbcon${C_RESET}${C_RED} first.${C_RESET}"
+        return 1
+    fi
+
+    # Parse flags
+    local reinstall_flag=""
+    local skip_confirm=0
+    local apk_files=()
+    for arg in "$@"; do
+        if [[ "$arg" == "-r" ]]; then
+            reinstall_flag="-r"
+        elif [[ "$arg" == "-y" ]] || [[ "$arg" == "--yes" ]] || [[ "$arg" == "-f" ]] || [[ "$arg" == "--force" ]]; then
+            skip_confirm=1
+        else
+            apk_files+=("$arg")
+        fi
+    done
+
+    # Resolve APK files — support exact path, directory, or fuzzy search
+    if [ ${#apk_files[@]} -eq 0 ] || { [ ${#apk_files[@]} -eq 1 ] && [ ! -f "${apk_files[0]}" ]; }; then
+        if ! command -v fzf &>/dev/null; then
+            echo -e "${C_RED}❌ fzf not installed — needed for APK browsing.${C_RESET}"
+            echo "Usage: adb-apk <exact-path-to-file.apk>"
+            return 1
+        fi
+
+        local query=""
+        local search_dirs=("$(pwd)")
+        [ "$(pwd)" != "$HOME" ] && search_dirs+=("$HOME")
+        [ -d "$HOME/storage/downloads" ] && search_dirs+=("$HOME/storage/downloads")
+        [ -d "$HOME/Downloads" ] && search_dirs+=("$HOME/Downloads")
+        [ -d "/storage/emulated/0/workspace" ] && search_dirs+=("/storage/emulated/0/workspace")
+
+        # If user gave an arg that isn't a file, use it as search hint
+        if [ ${#apk_files[@]} -eq 1 ]; then
+            local hint="${apk_files[0]}"
+            if [ -d "$hint" ]; then
+                # It's a directory — search inside it
+                search_dirs=("$hint")
+            else
+                # It's a fuzzy query
+                query="$hint"
+            fi
+        fi
+
+        echo -e "🔍 ${C_CYAN}Searching for APK files...${C_RESET}"
+        local selected
+        selected=$(find "${search_dirs[@]}" -maxdepth 3 -name "*.apk" -type f 2>/dev/null | sort -u | fzf --height=15 --reverse --query="$query" --prompt="Select APK > " --header="Pick an APK to install (ESC to cancel)")
+
+        if [ -z "$selected" ]; then
+            echo -e "${C_YELLOW}Cancelled.${C_RESET}"
+            return 0
+        fi
+        apk_files=("$selected")
+    fi
+
+    # Install each APK
+    local total=${#apk_files[@]}
+    local installed=0
+    local failed=0
+
+    for apk in "${apk_files[@]}"; do
+        # Validate file
+        if [ ! -f "$apk" ]; then
+            echo -e "${C_RED}❌ File not found: $apk${C_RESET}"
+            ((failed++))
+            continue
+        fi
+
+        if [[ "$apk" != *.apk ]]; then
+            echo -e "${C_RED}❌ Not an APK file: $apk${C_RESET}"
+            ((failed++))
+            continue
+        fi
+
+        local basename_apk; basename_apk=$(basename "$apk")
+        local size; size=$(du -h "$apk" 2>/dev/null | awk '{print $1}')
+
+        echo -e "\n${C_BOLD}${C_CYAN}── APK: ${C_YELLOW}$basename_apk${C_RESET} ${C_DIM}($size)${C_RESET}"
+        echo -e "  📂 Path: ${C_DIM}$apk${C_RESET}"
+
+        # Try to extract package info
+        local pkg_info=""
+        if command -v aapt2 &>/dev/null; then
+            pkg_info=$(aapt2 dump badging "$apk" 2>/dev/null | head -n 1)
+        elif command -v aapt &>/dev/null; then
+            pkg_info=$(aapt dump badging "$apk" 2>/dev/null | head -n 1)
+        fi
+
+        if [ -n "$pkg_info" ]; then
+            local pkg_name; pkg_name=$(echo "$pkg_info" | grep -oP "name='\K[^']+")
+            local pkg_ver; pkg_ver=$(echo "$pkg_info" | grep -oP "versionName='\K[^']+")
+            [ -n "$pkg_name" ] && echo -e "  📦 Package: ${C_GREEN}$pkg_name${C_RESET}"
+            [ -n "$pkg_ver" ] && echo -e "  📋 Version: ${C_BLUE}$pkg_ver${C_RESET}"
+        fi
+
+        # Confirm before installing (skip with -y)
+        if [ $skip_confirm -eq 0 ]; then
+            echo -ne "  👉 Install this APK? (Y/n): "
+            read confirm_install
+            if [[ "$confirm_install" =~ ^[Nn]$ ]]; then
+                echo -e "  ${C_YELLOW}Skipped.${C_RESET}"
+                continue
+            fi
+        fi
+
+        # Run install
+        echo -e "  ⏳ Installing..."
+        local result
+        result=$(adb -s "$dev" install $reinstall_flag "$apk" 2>&1)
+        local exit_code=$?
+
+        if echo "$result" | grep -qi "success"; then
+            echo -e "  ✅ ${C_GREEN}Installed successfully!${C_RESET}"
+            ((installed++))
+
+            # Offer to launch (single APK only)
+            if [ $total -eq 1 ] && [ -n "$pkg_info" ]; then
+                local pkg_name; pkg_name=$(echo "$pkg_info" | grep -oP "name='\K[^']+")
+                if [ -n "$pkg_name" ]; then
+                    echo -ne "  🚀 Launch now? (y/N): "
+                    read launch_choice
+                    if [[ "$launch_choice" =~ ^[Yy]$ ]]; then
+                        adb -s "$dev" shell monkey -p "$pkg_name" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1
+                        echo -e "  ${C_GREEN}App launched!${C_RESET}"
+                    fi
+                fi
+            fi
+        else
+            ((failed++))
+            # Friendly error translation
+            if echo "$result" | grep -qi "INSTALL_FAILED_UPDATE_INCOMPATIBLE"; then
+                echo -e "  ${C_RED}❌ Signature mismatch — the installed version was signed with a different key.${C_RESET}"
+                echo -ne "  🗑️  Uninstall existing app and retry? (y/N): "
+                read retry_choice
+                if [[ "$retry_choice" =~ ^[Yy]$ ]]; then
+                    local pkg_name; pkg_name=$(echo "$result" | grep -oP 'Package \K[^ ]+' || echo "")
+                    if [ -n "$pkg_name" ]; then
+                        adb -s "$dev" uninstall "$pkg_name" > /dev/null 2>&1
+                        result=$(adb -s "$dev" install $reinstall_flag "$apk" 2>&1)
+                        if echo "$result" | grep -qi "success"; then
+                            echo -e "  ✅ ${C_GREEN}Reinstalled successfully!${C_RESET}"
+                            ((failed--)); ((installed++))
+                        else
+                            echo -e "  ${C_RED}❌ Still failed: $result${C_RESET}"
+                        fi
+                    else
+                        echo -e "  ${C_RED}Could not detect package name to uninstall.${C_RESET}"
+                    fi
+                fi
+            elif echo "$result" | grep -qi "INSTALL_FAILED_ALREADY_EXISTS"; then
+                echo -e "  ${C_YELLOW}⚠️  App already installed. Use ${C_BOLD}adb-apk -r${C_RESET}${C_YELLOW} to update.${C_RESET}"
+            elif echo "$result" | grep -qi "INSTALL_FAILED_INSUFFICIENT_STORAGE"; then
+                echo -e "  ${C_RED}❌ Not enough storage on device.${C_RESET}"
+            elif echo "$result" | grep -qi "INSTALL_FAILED_OLDER_SDK"; then
+                echo -e "  ${C_RED}❌ APK requires a newer Android version than your device.${C_RESET}"
+            elif echo "$result" | grep -qi "INSTALL_PARSE_FAILED_NO_CERTIFICATES"; then
+                echo -e "  ${C_RED}❌ APK is not signed — may be corrupted or tampered.${C_RESET}"
+            elif echo "$result" | grep -qi "INSTALL_FAILED_VERSION_DOWNGRADE"; then
+                echo -e "  ${C_YELLOW}⚠️  Newer version already installed. Use ${C_BOLD}adb install -d${C_RESET}${C_YELLOW} to force downgrade.${C_RESET}"
+            else
+                echo -e "  ${C_RED}❌ Install failed: $result${C_RESET}"
+            fi
+        fi
+    done
+
+    # Summary for batch installs
+    if [ $total -gt 1 ]; then
+        echo -e "\n${C_BOLD}── Summary ──${C_RESET}"
+        echo -e "  ✅ Installed: ${C_GREEN}$installed${C_RESET} / $total"
+        [ $failed -gt 0 ] && echo -e "  ❌ Failed: ${C_RED}$failed${C_RESET}"
+    fi
+}

@@ -1,4 +1,4 @@
-# 🌟 TER: Termux Custom Environment (v1.2)
+# 🌟 TER: Termux Custom Environment (v1.3)
 
 TER is a portable, independent Termux environment configuration repository. It installs a modular shell structure, custom keyboard layout, and a modular app-registration system. It works completely standalone or can be integrated with other projects (like NEXUS) via the registry system.
 
@@ -163,10 +163,27 @@ git clone https://github.com/Ashu13b/ter.git ~/ter
 bash ~/ter/install.sh
 ```
 
+**First run (interactive setup):**
+```bash
+ter wizard
+```
+Walks through storage permission, git identity, SSH key, `gh auth login`, and scaffolds `~/.config/ter/secrets.env` from `secrets.template`.
+
+**Developer Options quick-toggle:**
+- `devopts on|off|toggle|status` — flips `development_settings_enabled` via `adbcon`. Effect is immediate (no phone reboot). Useful when a banking / Play-Integrity / GPS-spoof-detecting app refuses to run while dev options are visible.
+
 **Day-to-day:**
 - `ter update` — pull and redeploy
-- `ter doctor` — check repo vs deployed drift
+- `ter doctor` — check repo vs deployed drift, warn on unset secrets
 - `ter sync` — copy drifted runtime files back into the repo
 - `ter snapshot` — diagnostic device dump → `device.lock`
+- `ter info` — one-screen status
+
+**Optional installs (`extras/`):**
+- `bash ~/ter/extras/install-claude.sh` — Claude Code CLI via npm
+- `bash ~/ter/extras/install-gcloud.sh` — gcloud inside proot-distro debian
+
+**Secrets:**
+`secrets.template` lists expected env-var names. Copy to `~/.config/ter/secrets.env` (auto-done by `ter wizard`), fill in values; `core/01-config.sh` sources it each shell. The live file is gitignored.
 
 Then reload your terminal or run `re`.

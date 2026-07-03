@@ -15,7 +15,7 @@ def main():
     
     # Title
     out.append(f"{GRAY}╭─────────────────────────────────────────────────────────────────╮{RESET}")
-    out.append(f"{GRAY}│{RESET}  {CYAN}▀█▀ █▀▀ █▀█   █▀█ █▀{RESET}  {YELLOW}v1.2{RESET}                                  {GRAY}│{RESET}")
+    out.append(f"{GRAY}│{RESET}  {CYAN}▀█▀ █▀▀ █▀█   █▀█ █▀{RESET}  {YELLOW}v1.3{RESET}                                  {GRAY}│{RESET}")
     out.append(f"{GRAY}│{RESET}  {CYAN} █  ██  █▀▄   █▄█ ▄█{RESET}  {DIM}Type 'welcome' for dashboard{RESET}            {GRAY}│{RESET}")
     out.append(f"{GRAY}├─────────────────────────────────────────────────────────────────┤{RESET}")
     

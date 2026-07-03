@@ -2,6 +2,8 @@
 # Scans ~/.shell.d/apps/*/ and sources all .sh files from registered apps
 
 if [ -d "$HOME/.shell.d/apps" ]; then
+    # zsh errors on unmatched globs by default; opt into bash-like behavior.
+    [ -n "$ZSH_VERSION" ] && setopt local_options null_glob 2>/dev/null
     for _app_dir in "$HOME/.shell.d/apps"/*/; do
         [ -d "$_app_dir" ] || continue
         while IFS= read -r _app_f; do
@@ -29,6 +31,7 @@ apps() {
         list|"")
             echo -e "${C_CYAN}Registered Apps:${C_RESET}"
             local found=0
+            [ -n "$ZSH_VERSION" ] && setopt local_options null_glob 2>/dev/null
             for _manifest in "$HOME/.shell.d/apps"/*/manifest.json; do
                 [ -f "$_manifest" ] || continue
                 found=1

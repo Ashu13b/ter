@@ -95,7 +95,8 @@ if [ -z "$TER_LOADED" ]; then
 fi'
 
 for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
-    [ -f "$rc" ] || continue
+    # Fresh Termux may ship without an rc file; create one so the loader sticks.
+    [ -f "$rc" ] || touch "$rc"
     if grep -q "$LOADER_MARKER" "$rc" 2>/dev/null; then
         if grep -q "TER_LOADED" "$rc" 2>/dev/null; then
             info "Loader (guarded) already present in $(basename "$rc")"

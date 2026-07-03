@@ -7,7 +7,7 @@ This document captures the full development context for a new AI agent or develo
 ## Project Identity
 
 - **Name**: TER (Termux Environment Repository)
-- **Version**: 1.2
+- **Version**: 1.3
 - **Repo**: `~/ter` → pushed to GitHub as [Ashu13b/ter](https://github.com/Ashu13b/ter)
 - **Deploy target**: `~/.shell.d/` (sourced by `.bashrc` and `.zshrc`)
 - **Device**: OnePlus 13R (Snapdragon 8 Gen 3, Adreno 750 GPU)

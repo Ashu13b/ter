@@ -5,6 +5,8 @@ All notable changes to TER are documented here. Older history lives in
 
 ## [Unreleased]
 
+## [1.3] — 2026-06-22
+
 ### Added
 - `ter wizard` — interactive first-run setup: storage permission, git
   identity, SSH key generation, `gh auth login`, secrets scaffold.
@@ -17,6 +19,15 @@ All notable changes to TER are documented here. Older history lives in
 - `extras/install-gcloud.sh` — provisions Google Cloud CLI inside a
   proot-distro Debian rootfs and writes a thin `gcloud` wrapper on the
   Termux side.
+- `devopts on|off|toggle|status` — flip Android Developer Options via ADB
+  without a phone reboot. Hides `development_settings_enabled` from
+  Play-Integrity / GPS-spoof / banking-app checks.
+
+### Fixed
+- `install.sh` creates `~/.bashrc` / `~/.zshrc` if missing so the loader is
+  installed on a truly fresh Termux (previously skipped when rc absent).
+- `install.sh` strips inline `#` comments from `packages.txt` before
+  `pkg install` (was passing comment text as package names).
 
 ## [1.2] — 2026-06-22
 
