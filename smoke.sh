@@ -1,10 +1,10 @@
-#!/usr/bin/env bash
+#!/data/data/com.termux/files/usr/bin/env bash
 # Smoke test: source all TER modules in bash and zsh, verify key commands exist.
 # Run from anywhere: bash ~/ter/smoke.sh
 set -u
 
 REPO="$(cd "$(dirname "$0")" && pwd)"
-EXPECT="re cls scan adbcon optimize tabname apps ter dvop"
+EXPECT="re cls scan adbcon optimize tabname apps ter dvop adb-apk"
 FAIL=0
 
 run_in() {

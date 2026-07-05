@@ -281,6 +281,19 @@ adb-apk() {
         return 1
     fi
 
+    # Ensure Play Protect verification for ADB installs is disabled to guarantee silent installation
+    local verifier_state; verifier_state=$(adb -s "$dev" shell settings get global verifier_verify_adb_installs 2>/dev/null | tr -d '\r')
+    if [ "$verifier_state" = "1" ]; then
+        echo -e "🛡️  ${C_YELLOW}Disabling Play Protect verification for ADB installs to ensure silent install...${C_RESET}"
+        adb -s "$dev" shell settings put global verifier_verify_adb_installs 0 >/dev/null 2>&1
+        local check_state; check_state=$(adb -s "$dev" shell settings get global verifier_verify_adb_installs 2>/dev/null | tr -d '\r')
+        if [ "$check_state" = "0" ]; then
+            echo -e "✅ ${C_GREEN}Silent mode enabled.${C_RESET}"
+        else
+            echo -e "⚠️  ${C_YELLOW}Could not disable verification automatically. If prompted on screen, please tap 'Allow'.${C_RESET}"
+        fi
+    fi
+
     # Parse flags
     local reinstall_flag=""
     local skip_confirm=0
