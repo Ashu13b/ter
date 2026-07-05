@@ -92,6 +92,8 @@ EOF
         echo "  tabname       Rename tab"
         echo "  optimize      BG stability"
         echo "  adbcon        ADB connect"
+        echo "  adb-apk       Smart APK Installer"
+        echo "  dvop          Developer Options Toggle"
         echo "  scan          Network scan"
         echo "  apps          App registry"
         echo ""
