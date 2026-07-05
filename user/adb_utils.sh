@@ -275,6 +275,18 @@ adb-apk() {
         return 0
     fi
 
+    # Check prerequisites
+    if ! command -v adb &>/dev/null; then
+        echo -e "${C_RED}❌ Prerequisites missing: 'adb' command not found.${C_RESET}"
+        echo -e "   Please install android-tools first: ${C_GREEN}pkg install android-tools${C_RESET}"
+        return 1
+    fi
+
+    # Friendly hint if aapt/aapt2 is missing (used for parsing package details)
+    if ! command -v aapt2 &>/dev/null && ! command -v aapt &>/dev/null; then
+        echo -e "💡 ${C_DIM}Tip: Install 'aapt' to view package names & versions before installing: pkg install aapt${C_RESET}"
+    fi
+
     local dev; dev=$(_get_adb_device)
     if [ -z "$dev" ]; then
         echo -e "${C_RED}❌ No active ADB device found. Run ${C_BOLD}adbcon${C_RESET}${C_RED} first.${C_RESET}"
