@@ -2,6 +2,9 @@
 # ── TER: Termux Environment Setup ──
 set -e
 
+# Sanitize PATH: prioritize Termux system binaries to avoid broken wrappers (e.g. nexus/bin)
+export PATH="/data/data/com.termux/files/usr/bin:$PATH"
+
 info() { echo -e "\e[34m[INFO]\e[0m $*"; }
 success() { echo -e "\e[32m[OK]\e[0m $*"; }
 
@@ -134,7 +137,7 @@ command -v termux-reload-settings &>/dev/null && termux-reload-settings
 HOOK="$REPO_DIR/.git/hooks/pre-commit"
 if [ -d "$REPO_DIR/.git" ] && [ ! -e "$HOOK" -o ! -s "$HOOK" ] || ! grep -q "smoke.sh" "$HOOK" 2>/dev/null; then
     cat > "$HOOK" << 'HOOK_EOF'
-#!/usr/bin/env bash
+#!/data/data/com.termux/files/usr/bin/env bash
 # Auto-installed by ter/install.sh — runs shell smoke test before commit.
 REPO="$(git rev-parse --show-toplevel)"
 [ -x "$REPO/smoke.sh" ] || exit 0
