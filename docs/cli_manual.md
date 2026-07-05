@@ -186,5 +186,34 @@ ter toggle tmux
 
 ---
 
+## 3. Troubleshooting & Common Issues
+
+### ❌ Linker Symbol Errors on `adb` (protobuf / abseil-cpp mismatch)
+
+If running `adb` or `adb-apk` fails with a linker error similar to:
+* `CANNOT LINK EXECUTABLE "adb": cannot locate symbol "...protobuf..."`
+* `cannot locate symbol "...abseil..." referenced by "libprotobuf.so"`
+
+**Why it happens:**
+This is a standard Termux packaging sync mismatch. A package upgrade has updated `android-tools` (which contains `adb`) to a version built against newer libraries, but your local shared libraries (`libprotobuf` and `abseil-cpp`) were not automatically upgraded to their matching versions.
+
+**How to fix it:**
+Run the following package upgrade commands in your Termux shell to sync the dependencies to their latest repository builds:
+
+```bash
+# Upgrade the core protobuf library
+apt install -y libprotobuf
+
+# Upgrade the abseil-cpp library dependency
+apt install -y abseil-cpp
+```
+
+Once upgraded, verify that the linker errors are resolved by running:
+```bash
+adb version
+```
+
+---
+
 > [!NOTE]
 > All help flags can be executed completely offline. They bypass active ADB loopback connectivity checks so you can query commands and inspect usages without being connected to an Android device.
