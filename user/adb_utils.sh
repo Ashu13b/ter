@@ -212,16 +212,20 @@ dvop() {
     }
 
     local force=0
-    for a in "$@"; do [ "$a" = "-y" ] && force=1; done
+    local silent=0
+    for a in "$@"; do
+        [ "$a" = "-y" ] || [ "$a" = "-f" ] && force=1
+        [ "$a" = "-s" ] || [ "$a" = "--silent" ] && silent=1
+    done
 
     case "$1" in
         ""|status)
             local s; s=$(get_state)
-            [ "$s" = "1" ] && echo -e "dvop: ${C_GREEN}ON${C_RESET}" || echo -e "dvop: ${C_YELLOW}OFF${C_RESET}"
+            [ "$silent" -ne 1 ] && ( [ "$s" = "1" ] && echo -e "dvop: ${C_GREEN}ON${C_RESET}" || echo -e "dvop: ${C_YELLOW}OFF${C_RESET}" )
             ;;
         on)
             adb -s "$dev" shell settings put global development_settings_enabled 1 >/dev/null
-            echo -e "dvop: ${C_GREEN}ON${C_RESET} (Settings menu will show Developer Options)"
+            [ "$silent" -ne 1 ] && echo -e "dvop: ${C_GREEN}ON${C_RESET} (Settings menu will show Developer Options)"
             ;;
         off)
             if [ "$force" -ne 1 ]; then
@@ -234,14 +238,22 @@ dvop() {
                 case "$yn" in [Yy]*) ;; *) echo "Cancelled."; return 0;; esac
             fi
             adb -s "$dev" shell settings put global development_settings_enabled 0 >/dev/null
-            echo -e "dvop: ${C_YELLOW}OFF${C_RESET} (hidden from apps — no reboot needed)"
+            [ "$silent" -ne 1 ] && echo -e "dvop: ${C_YELLOW}OFF${C_RESET} (hidden from apps — no reboot needed)"
             ;;
         toggle)
             local s; s=$(get_state)
-            if [ "$s" = "1" ]; then dvop off; else dvop on; fi
+            if [ "$s" = "1" ]; then
+                if [ "$force" -eq 1 ]; then
+                    dvop off -f $( [ "$silent" -eq 1 ] && echo "-s" )
+                else
+                    dvop off
+                fi
+            else
+                dvop on $( [ "$silent" -eq 1 ] && echo "-s" )
+            fi
             ;;
         -h|--help|help)
-            echo "Usage: dvop [on|off|toggle|status]  [-y skip confirm on off]"
+            echo "Usage: dvop [on|off|toggle|status]  [-f/-y skip confirmation] [-s/--silent run silently]"
             echo "  Flips development_settings_enabled via ADB. Requires adbcon."
             echo "  Effect is immediate — no phone restart needed."
             echo "  Warning: 'off' also stops Wireless Debugging → recover manually on phone."
