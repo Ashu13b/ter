@@ -252,10 +252,35 @@ dvop() {
                 dvop on $( [ "$silent" -eq 1 ] && echo "-s" )
             fi
             ;;
+        usb)
+            local sub="$2"
+            if [ -z "$sub" ] || [ "$sub" = "status" ]; then
+                local u; u=$(adb -s "$dev" shell settings get global adb_enabled 2>/dev/null | tr -d '\r')
+                [ "$silent" -ne 1 ] && ( [ "$u" = "1" ] && echo -e "dvop usb (USB Debugging): ${C_GREEN}ON${C_RESET}" || echo -e "dvop usb (USB Debugging): ${C_YELLOW}OFF${C_RESET}" )
+            elif [ "$sub" = "on" ]; then
+                adb -s "$dev" shell settings put global adb_enabled 1 >/dev/null
+                [ "$silent" -ne 1 ] && echo -e "dvop usb (USB Debugging): ${C_GREEN}ON${C_RESET}"
+            elif [ "$sub" = "off" ]; then
+                # Safe check: if connected over physical USB, warn the user.
+                if [ "$force" -ne 1 ] && adb -s "$dev" shell getprop sys.usb.state 2>/dev/null | grep -q "adb"; then
+                    echo -e "${C_YELLOW}⚠  You are currently connected via physical USB. Disabling USB Debugging will close this session.${C_RESET}"
+                    echo -n "   Continue? [y/N] "
+                    read yn
+                    case "$yn" in [Yy]*) ;; *) echo "Cancelled."; return 0;; esac
+                fi
+                adb -s "$dev" shell settings put global adb_enabled 0 >/dev/null
+                [ "$silent" -ne 1 ] && echo -e "dvop usb (USB Debugging): ${C_YELLOW}OFF${C_RESET}"
+            else
+                echo "Usage: dvop usb [on|off]"
+            fi
+            ;;
         -h|--help|help)
-            echo "Usage: dvop [on|off|toggle|status]  [-f/-y skip confirmation] [-s/--silent run silently]"
+            echo "Usage: dvop [on|off|toggle|status|usb]  [-f/-y skip confirmation] [-s/--silent run silently]"
             echo "  Flips development_settings_enabled via ADB. Requires adbcon."
             echo "  Effect is immediate — no phone restart needed."
+            echo "  Subcommands:"
+            echo "    on|off|toggle  Enable/disable main Developer Options menu."
+            echo "    usb [on|off]   Enable/disable physical USB Debugging (adb_enabled)."
             echo "  Warning: 'off' also stops Wireless Debugging → recover manually on phone."
             ;;
         *)
