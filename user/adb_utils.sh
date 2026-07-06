@@ -512,3 +512,8 @@ adb-apk() {
         [ $failed -gt 0 ] && echo -e "  ❌ Failed: ${C_RED}$failed${C_RESET}"
     fi
 }
+
+# ── 8. Open Device Info / About Phone Settings ──
+ter-about-phone() {
+    am start -n com.android.settings/.Settings\$DeviceInfoSettingsActivity >/dev/null 2>&1 || am start -a android.settings.SETTINGS >/dev/null 2>&1
+}
