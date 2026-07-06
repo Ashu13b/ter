@@ -29,6 +29,7 @@ get_lan_ip() {
 alias kocr-app='cd ~/kaggle-ocr'; alias kocr-res='cd ~/kaggle-ocr/results'
 alias nx-portal='(sleep 1.5 && termux-open http://127.0.0.1:19080 >/dev/null 2>&1) & python3 ~/nexus/nexus.py portal'
 alias nx-watch='python3 ~/nexus/nexus.py watch'
+alias about-device='adb shell am start -a android.settings.DEVICE_INFO_SETTINGS >/dev/null 2>&1 || termux-notification -t "About Device" -c "Tap to open settings" --action "am start -a android.settings.DEVICE_INFO_SETTINGS"'
 
 # ── Fix/Kill ──
 alias kill-all-bg='pkill -u $(id -u)'; alias fix-termux='termux-reload-settings && reset'
