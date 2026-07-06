@@ -517,3 +517,20 @@ adb-apk() {
 ter-about-phone() {
     am start -a android.settings.DEVICE_INFO_SETTINGS >/dev/null 2>&1 || am start -a android.settings.SETTINGS >/dev/null 2>&1
 }
+
+# ── 9. Developer Initialization (No ADB Required) ──
+dev-init() {
+    # Check if we are running in an interactive terminal session (foreground)
+    if [ -t 0 ] || [[ $- == *i* ]]; then
+        echo -e "🚀 \e[1;36mOpening About Device settings natively...\e[0m"
+        am start -a android.settings.DEVICE_INFO_SETTINGS >/dev/null 2>&1 || am start -a android.settings.SETTINGS >/dev/null 2>&1
+    else
+        # Running in background/shortcut context -> send notification click bypass
+        termux-notification -t 'About Device' -c 'Tap here to open About Device' \
+            --action "am start -a android.settings.DEVICE_INFO_SETTINGS" >/dev/null 2>&1
+        echo -e "\n🛠 \e[1;36mDeveloper Initialization\e[0m"
+        echo "1. Pull down your notification drawer."
+        echo "2. Tap 'About Device' to open the settings screen."
+        echo "3. Tap 'Version' and then tap 'Build Number' 7 times!"
+    fi
+}
