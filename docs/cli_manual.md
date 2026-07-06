@@ -18,7 +18,7 @@ Welcome to the command line interface guide for the unified **TER OS** Termux en
 | `dvop` | System | Toggles `development_settings_enabled` via ADB (on/off/toggle/status). `dvop off` confirms first — see caveat in README | `dvop status` |
 | `optimize` | Stability | Safely configures background process stability & runs background tasks | `optimize -h` |
 | `scan` | Security | Local subnet device discoverer, plain-text protocol sniffer, and vulnerability scanner | `scan -h` |
-| `am` | Utility | Interactive shell alias manager (list, add, edit, reload) | `am -h` / `am --help` |
+| `alm` | Utility | Interactive shell alias manager (list, add, edit, reload) | `alm -h` / `alm --help` |
 | `apps` | Registry | Termux plug-in app registry loader and manifest visualizer | `apps -h` |
 | `ter` | System | Master Controller dashboard and interactive theme switcher | `ter -h` / `ter --help` |
 
@@ -154,14 +154,14 @@ scan sniff <ip_address>
 scan vuln <ip_address>
 ```
 
-### 🛠️ Shell Alias Manager (`am`)
-Handles interactive adding, modifying, and reloading of shell shortcuts.
+### 🛠️ Shell Alias Manager (`alm`)
+Handles interactive adding, modifying, and reloading of shell shortcuts. Renamed from `am` to avoid confusion with Android's Activity Manager (`am start …` inside `adb shell`).
 ```bash
 # List all custom aliases
-am list
+alm list
 
 # Add a new custom alias interactively
-am add
+alm add
 ```
 
 ### 🔌 App Registry (`apps`)

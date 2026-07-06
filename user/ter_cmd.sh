@@ -89,6 +89,7 @@ EOF
         echo "  ter snapshot  Diagnose pkg/storage state → device.lock"
         echo "  ter info      One-screen status (version, drift, pkgs)"
         echo "  ter shortcut  Pin shortcuts to Android home screen"
+        echo "  ter perms     Grant Android/ColorOS permissions for foreground shortcuts"
         echo "  re            Reload shell"
         echo "  tabname       Rename tab"
         echo "  optimize      BG stability"
@@ -378,6 +379,33 @@ EOF
         ( cd "$repo" && git pull --ff-only ) || { echo "git pull failed"; return 1; }
         ( cd "$repo" && bash install.sh ) || return 1
         echo -e "  \033[1;32m✓ Updated. Run 're' or open a new terminal.\033[0m\n"
+        return
+    fi
+
+    # Open Android permission screens Termux needs for widget/shortcut foreground.
+    if [ "$1" = "perms" ]; then
+        echo -e "\n\033[1;36m  🔐 TER Perms — foreground unlock for widget/shortcut taps\033[0m"
+        echo -e "\033[1;36m  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+        echo -e "  Widget shortcuts (~/.shortcuts/) can only open Termux in the"
+        echo -e "  foreground if BOTH of these are granted:"
+        echo ""
+        echo -e "  \033[1;33m1) Android: Display over other apps\033[0m"
+        echo -e "     Bypasses Background Activity Launch (BAL) restrictions."
+        echo -e "     → grant the \033[1;37mtoggle for Termux\033[0m in the screen that just opened."
+        am start -a android.settings.action.MANAGE_OVERLAY_PERMISSION -d package:com.termux >/dev/null 2>&1 \
+            || am start -a android.settings.action.MANAGE_OVERLAY_PERMISSION >/dev/null 2>&1
+        echo ""
+        read -p "  Press Enter after granting overlay permission... " _
+        echo ""
+        echo -e "  \033[1;33m2) ColorOS: Allow background pop-up / start\033[0m"
+        echo -e "     ColorOS/OxygenOS adds a second BAL wall on top of Google's."
+        echo -e "     → in Termux app details: \033[1;37mManage permissions\033[0m →"
+        echo -e "       \033[1;37mAllow background activities\033[0m (name varies by OS version)."
+        am start -a android.settings.APPLICATION_DETAILS_SETTINGS -d package:com.termux >/dev/null 2>&1
+        echo ""
+        echo -e "  \033[1;32m✓ Once both are on, widget shortcuts open Termux visibly\033[0m"
+        echo -e "  \033[1;32m  and \`am start\` calls in your scripts land in the foreground.\033[0m"
+        echo ""
         return
     fi
 

@@ -4,12 +4,12 @@
 
 alias_manager_help() {
     echo -e "\e[34m╔════════════════════════════════════════════╗\e[0m"
-    echo -e "\e[34m║\e[0m \e[32mTER ALIAS MANAGER (am)\e[0m               \e[34m║\e[0m"
+    echo -e "\e[34m║\e[0m \e[32mTER ALIAS MANAGER (alm)\e[0m              \e[34m║\e[0m"
     echo -e "\e[34m╠════════════════════════════════════════════╣\e[0m"
-    echo -e "\e[34m║\e[0m \e[33mam list\e[0m   - Show all custom aliases        \e[34m║\e[0m"
-    echo -e "\e[34m║\e[0m \e[33mam add\e[0m    - Interactively add a new alias  \e[34m║\e[0m"
-    echo -e "\e[34m║\e[0m \e[33mam edit\e[0m   - Open alias file in editor      \e[34m║\e[0m"
-    echo -e "\e[34m║\e[0m \e[33mam reload\e[0m - Refresh shell aliases          \e[34m║\e[0m"
+    echo -e "\e[34m║\e[0m \e[33malm list\e[0m   - Show all custom aliases       \e[34m║\e[0m"
+    echo -e "\e[34m║\e[0m \e[33malm add\e[0m    - Interactively add a new alias \e[34m║\e[0m"
+    echo -e "\e[34m║\e[0m \e[33malm edit\e[0m   - Open alias file in editor     \e[34m║\e[0m"
+    echo -e "\e[34m║\e[0m \e[33malm reload\e[0m - Refresh shell aliases         \e[34m║\e[0m"
     echo -e "\e[34m╚════════════════════════════════════════════╝\e[0m"
 }
 
@@ -33,7 +33,7 @@ alias_manager_add() {
     fi
 }
 
-am() {
+alm() {
     if [[ -z "$1" ]] || [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]] || [[ "$1" == "help" ]]; then
         alias_manager_help
         return 0
