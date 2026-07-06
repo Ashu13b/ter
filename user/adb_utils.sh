@@ -513,13 +513,8 @@ adb-apk() {
     fi
 }
 
-# ── 8. Open Device Info / About Phone Settings ──
-ter-about-phone() {
-    am start -a android.settings.DEVICE_INFO_SETTINGS >/dev/null 2>&1 || am start -a android.settings.SETTINGS >/dev/null 2>&1
-}
-
-# ── 9. Developer Initialization (No ADB Required) ──
-dev-init() {
+# ── 8. Open Device Info / About Phone Settings (No ADB Required) ──
+setabout() {
     # Check if we are running in an interactive terminal session (foreground)
     if [ -t 0 ] || [[ $- == *i* ]]; then
         echo -e "🚀 \e[1;36mOpening About Device settings natively...\e[0m"
