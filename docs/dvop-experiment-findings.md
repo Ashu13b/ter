@@ -226,3 +226,85 @@ app UID can only *observe* it, not write it. Rewriting requires either:
 Same class of wall as the `WRITE_SECURE_SETTINGS` problem — the
 platform centralises the truth in `system_server` and only trusts
 itself.
+
+---
+
+## The Version screen: the signature ceiling
+
+**Question:** if Wireless Debugging died and Developer Options vanished
+from Settings, can we jump straight to *Settings → About Device →
+Version* (the 7-tap-to-unlock page) from a shell or a shortcut?
+
+**Answer:** no. About Device is reachable; Version is not.
+
+Parsed `/system_ext/priv-app/Settings/Settings.apk`'s manifest:
+
+- `com.android.settings.Settings$MyDeviceInfoActivity` — About Device.
+  `exported=true`. Reachable via
+  `am start -a android.settings.DEVICE_INFO_SETTINGS`.
+- `com.oplus.settings.OplusSubSettings` — hosts the Version fragment.
+  `exported=false`. **Not startable from any external package.**
+
+`exported=false` is stricter than a signature permission — the activity
+isn't even *reachable to ask* for permission. Neither Termux (UID
+u0_aXXX), nor `adb shell` (UID 2000), nor a signed system app can call
+`startActivity()` on it. The only entry is tapping the "Version" row
+from inside About Device, which routes internally within
+`com.android.settings`.
+
+Empirically verified: tried 6 explicit component names + 4 action
+intents from Termux `am`. Every one returned "Activity class does not
+exist" or "unable to resolve Intent". The only landing point is About
+Device.
+
+**Recovery ladder (dvop=off, ADB dead):**
+
+1. `am start -a android.settings.DEVICE_INFO_SETTINGS` — lands on About
+   Device (works from Termux without ADB; see next section).
+2. Tap the **Version** row manually.
+3. Seven taps on **Build Number** — Developer Options reappears.
+4. `adbcon` to reconnect.
+
+Root would skip steps 2–3 via
+`su -c 'settings put global development_settings_enabled 1'`. No
+non-root shortcut exists.
+
+---
+
+## Termux's `am` — the ADB-less activity manager
+
+Termux ships **`termux-am`** (pkg: `termux-am`, 0.8.0), an
+Oreo-compatible reimplementation of Android's `am` CLI. It routes
+activity/service/broadcast intents through Termux's own IPC socket —
+using Termux's UID, no `adb shell` required.
+
+Practical consequences:
+
+- `am start -a android.settings.DEVICE_INFO_SETTINGS` from any
+  interactive Termux shell opens About Device instantly. Confirmed
+  working end-to-end on OnePlus 13R / OxygenOS 15.
+- Widget-tap-launched shortcuts (`~/.shortcuts/*`) are treated by
+  Android as **foreground user gestures** (launcher-initiated), so BAL
+  does not apply. Native `am start` inside the shortcut script fires
+  cleanly; the earlier `termux-notification --action "am start …"`
+  bypass is unnecessary for widget taps.
+- BAL still bites in genuinely-background contexts: notification-tap
+  action strings when Termux isn't foreground, `RUN_COMMAND_SERVICE`
+  from other apps, boot-time auto-start. `ter perms` opens the two
+  Android/ColorOS toggles that unlock those cases.
+
+Not a signature-permission bypass — `am` still hits the same
+`system_server` gate every other caller does. Version screen
+(`exported=false`) remains unreachable. What Termux `am` removes is
+the *ADB dependency* for the reachable subset.
+
+**Concrete swap in the codebase** (post-finding):
+
+- `user/aliases.sh`: `about-device` — native `am` → `adb shell am` →
+  `termux-notification` (each fallback covers a different context).
+- `user/adb_utils.sh`: `ter-about-phone` — native `am` with reliable
+  `DEVICE_INFO_SETTINGS` action.
+- `user/ter_cmd.sh` (`ter shortcut` generator): dropped the
+  `timeout 1s adb shell am start -n com.termux/.app.TermuxActivity`
+  foregrounding hack; widget-tap already foregrounds Termux and native
+  `am` handles the intent.
