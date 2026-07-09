@@ -53,3 +53,9 @@ print(f\"{m.get('name', 'unknown')}|{m.get('version', '?')}|{', '.join(m.get('co
             ;;
     esac
 }
+
+# Silence zsh's completion system trying to auto-register `apps` and hitting
+# `_comps: assignment to invalid subscript range`. Bind it to the no-op completer.
+if [ -n "$ZSH_VERSION" ]; then
+    { autoload -Uz compdef && compdef _default apps alm; } 2>/dev/null
+fi

@@ -88,7 +88,7 @@ EOF
         echo "  ter update    git pull + redeploy"
         echo "  ter snapshot  Diagnose pkg/storage state → device.lock"
         echo "  ter info      One-screen status (version, drift, pkgs)"
-        echo "  ter shortcut  Pin shortcuts to Android home screen"
+        echo "  ter shortcut  Pin shortcuts to home screen (add | list | rm)"
         echo "  ter perms     Grant Android/ColorOS permissions for foreground shortcuts"
         echo "  re            Reload shell"
         echo "  tabname       Rename tab"
@@ -190,6 +190,24 @@ EOF
                 else
                     echo -e "\n  \033[1;33m⚠ sshd on non-default port :$sshd_port\033[0m — NEXUS assumes :8022."
                 fi
+            fi
+        fi
+        # Termux companion apps: Widget + API. Missing these silently breaks
+        # shortcut taps and termux-toast / termux-notification calls.
+        local widget_dir="/data/data/com.termux.widget"
+        local api_dir="/data/data/com.termux.api"
+        if [ ! -d "$widget_dir" ]; then
+            if [ "$quiet" -eq 1 ]; then
+                echo -e "\033[1;33m⚠ ter doctor:\033[0m Termux:Widget not installed — shortcut taps won't fire."
+            else
+                echo -e "\n  \033[1;33m⚠ Termux:Widget missing\033[0m — install from F-Droid/Play (matching signature)."
+            fi
+        fi
+        if [ ! -d "$api_dir" ]; then
+            if [ "$quiet" -eq 1 ]; then
+                echo -e "\033[1;33m⚠ ter doctor:\033[0m Termux:API not installed — termux-toast / notifications will no-op."
+            else
+                echo -e "\n  \033[1;33m⚠ Termux:API missing\033[0m — install from F-Droid/Play (matching signature)."
             fi
         fi
         [ "$quiet" -eq 0 ] && echo ""
@@ -403,8 +421,22 @@ EOF
         echo -e "       \033[1;37mAllow background activities\033[0m (name varies by OS version)."
         am start -a android.settings.APPLICATION_DETAILS_SETTINGS -d package:com.termux >/dev/null 2>&1
         echo ""
-        echo -e "  \033[1;32m✓ Once both are on, widget shortcuts open Termux visibly\033[0m"
-        echo -e "  \033[1;32m  and \`am start\` calls in your scripts land in the foreground.\033[0m"
+        read -p "  Press Enter after configuring background start... " _
+        echo ""
+        echo -e "  \033[1;33m3) Battery optimization: don't optimize Termux\033[0m"
+        echo -e "     Prevents ColorOS from killing Termux mid-tap. Without this,"
+        echo -e "     widget taps land on a dead process and no-op silently."
+        am start -a android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS >/dev/null 2>&1
+        echo ""
+        read -p "  Press Enter after whitelisting Termux from battery optimization... " _
+        echo ""
+        echo -e "  \033[1;33m4) Notification permission (Android 13+)\033[0m"
+        echo -e "     Termux:Widget uses a foreground service that needs a"
+        echo -e "     notification channel. Missing = service can't start."
+        am start -a android.settings.APP_NOTIFICATION_SETTINGS --es android.provider.extra.APP_PACKAGE com.termux >/dev/null 2>&1
+        echo ""
+        echo -e "  \033[1;32m✓ With all four granted, widget taps reliably foreground Termux\033[0m"
+        echo -e "  \033[1;32m  and background \`am start\`/service calls succeed.\033[0m"
         echo ""
         return
     fi
@@ -436,46 +468,89 @@ EOF
         return
     fi
 
-    # Create Home Screen Shortcuts (via Termux:Widget + ADB Pinning Activity)
+    # Create/list/remove Home Screen Shortcuts (via Termux:Widget).
     if [ "$1" = "shortcut" ]; then
+        # ter shortcut list
+        if [ "$2" = "list" ] || [ "$2" = "ls" ]; then
+            local dir="$HOME/.shortcuts" f n cmd_line
+            echo -e "\n\033[1;36m  📱 Shortcuts in ~/.shortcuts/\033[0m"
+            if [ ! -d "$dir" ] || [ -z "$(ls -A "$dir" 2>/dev/null)" ]; then
+                echo "  (none)"
+                echo ""
+                return 0
+            fi
+            for f in "$dir"/*; do
+                [ -f "$f" ] || continue
+                n=$(basename "$f")
+                # `ter shortcut` writes a line: `echo -e "  \e[37mCommand: <cmd>\e[0m\n"` — parse that.
+                cmd_line=$(sed -n 's/^echo -e "  \\e\[37mCommand: \(.*\)\\e\[0m\\n"$/\1/p' "$f" 2>/dev/null | head -1)
+                printf "  \033[1;33m%-20s\033[0m %s\n" "$n" "${cmd_line:-<custom / hand-edited>}"
+            done
+            echo ""
+            return 0
+        fi
+
+        # ter shortcut rm <name>
+        if [ "$2" = "rm" ] || [ "$2" = "remove" ] || [ "$2" = "del" ]; then
+            local n="$3"
+            if [ -z "$n" ]; then
+                echo "Usage: ter shortcut rm <name>"
+                return 1
+            fi
+            local f="$HOME/.shortcuts/$n"
+            if [ ! -e "$f" ]; then
+                echo -e "  \033[1;33m✗ Not found:\033[0m $f"
+                return 1
+            fi
+            rm -f "$f"
+            echo -e "  \033[1;32m✓ Removed:\033[0m ~/.shortcuts/$n"
+            return 0
+        fi
+
         if [ -n "$2" ]; then
             local name="$2"
-            local cmd=""
             shift 2
-            cmd="$*"
+            # Parse optional flags: --silent skips the "Press Enter to exit" tail.
+            local silent=0
+            local args=()
+            local a
+            for a in "$@"; do
+                case "$a" in
+                    --silent|-s) silent=1 ;;
+                    *) args+=("$a") ;;
+                esac
+            done
+            local cmd="${args[*]}"
             if [ -z "$cmd" ]; then
-                echo "Usage: ter shortcut <name> <command>"
+                echo "Usage: ter shortcut <name> [--silent] <command>"
+                echo "       ter shortcut list"
+                echo "       ter shortcut rm <name>"
                 echo "Example: ter shortcut adb-wizard adbcon"
                 return 1
             fi
 
-            # 1. Ensure directory exists
             mkdir -p "$HOME/.shortcuts"
 
-            # 2. Write the script
+            # Build the script. Termux:Widget foregrounds Termux on tap
+            # (user gesture), so no BAL bypass hop is needed.
+            local tail_block
+            if [ "$silent" -eq 1 ]; then
+                tail_block=''
+            else
+                tail_block=$'\necho -e "\\n\\e[1;32m✔ Execution finished.\\e[0m"\necho -ne "Press Enter to exit..."\nread -r'
+            fi
             cat > "$HOME/.shortcuts/$name" << EOF
 #!/data/data/com.termux/files/usr/bin/bash
 # Generated by 'ter shortcut' on $(date -Iseconds)
-# Force Termux to the foreground using ADB (bypasses background activity blocks)
-if command -v adb &>/dev/null; then
-    timeout 1s adb shell am start -n com.termux/.app.TermuxActivity >/dev/null 2>&1
-fi
-
-# Load Termux environment (loads custom aliases and functions)
+# Termux:Widget foregrounds Termux on tap; native \`am\` (termux-am) handles intents.
 [ -f "\$HOME/.bashrc" ] && source "\$HOME/.bashrc" >/dev/null 2>&1
-
-# Show native toast notification
-termux-toast "Running shortcut: $name..."
-
+termux-toast "Running shortcut: $name..." 2>/dev/null
 echo -e "🚀 \e[1;36mRunning: $name\e[0m"
 echo -e "  \e[37mCommand: $cmd\e[0m\n"
-$cmd
-echo -e "\n\e[1;32m✔ Execution finished.\e[0m"
-echo -ne "Press Enter to exit..."
-read -r
+$cmd${tail_block}
 EOF
             chmod +x "$HOME/.shortcuts/$name"
-            echo -e "✅ \e[1;32mCreated shortcut script:\e[0m ~/.shortcuts/$name"
+            echo -e "✅ \033[1;32mCreated shortcut:\033[0m ~/.shortcuts/$name$([ "$silent" -eq 1 ] && echo " (silent)")"
 
             # 3. Trigger ADB pinning activity if ADB is available
             # Note: We source adb_utils.sh to get _get_adb_device helper if needed
