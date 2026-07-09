@@ -30,22 +30,21 @@ apps() {
     case "$1" in
         list|"")
             echo -e "${C_CYAN}Registered Apps:${C_RESET}"
-            local found=0
+            local found=0 _manifest info name ver cmds padded_name
             [ -n "$ZSH_VERSION" ] && setopt local_options null_glob 2>/dev/null
             for _manifest in "$HOME/.shell.d/apps"/*/manifest.json; do
                 [ -f "$_manifest" ] || continue
                 found=1
-                local info; info=$(python3 -c "
+                info=$(python3 -c "
 import sys, json
 m = json.load(open(sys.argv[1]))
 print(f\"{m.get('name', 'unknown')}|{m.get('version', '?')}|{', '.join(m.get('commands', []))}\")
 " "$_manifest" 2>/dev/null)
                 IFS='|' read -r name ver cmds <<< "$info"
-                local padded_name; padded_name=$(printf "%-14s" "$name")
+                padded_name=$(printf "%-14s" "$name")
                 echo -e "  ${padded_name} v${ver} [${cmds}]"
             done
             [ $found -eq 0 ] && echo "  No apps registered."
-            unset _manifest
             ;;
         *)
             echo -e "${C_RED}❌ Unknown option: $1${C_RESET}"
