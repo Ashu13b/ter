@@ -32,3 +32,6 @@ alias nx-watch='python3 ~/nexus/nexus.py watch'
 
 # ── Fix/Kill ──
 alias kill-all-bg='pkill -u $(id -u)'; alias fix-termux='termux-reload-settings && reset'
+# unstuck: clear leaked xterm mouse-tracking after a dead SSH/tailscale/vim
+# session leaves Termux echoing `65;39;38M`-style garbage on every touch.
+alias unstuck='printf "\e[?1000l\e[?1002l\e[?1003l\e[?1006l"'
