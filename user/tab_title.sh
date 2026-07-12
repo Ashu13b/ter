@@ -53,9 +53,12 @@ _ter_where() {
 
 _ter_mouse_reset() {
     # Disable xterm mouse tracking (1000/1002/1003) + SGR mode (1006).
-    # SSH/tmux/vim on remotes (incl. tailscale tunnels) sometimes die without
+    # SSH/vim on remotes (incl. tailscale tunnels) sometimes die without
     # sending the disable sequence, leaving Termux echoing `65;39;38M`-style
     # garbage on every touch. Firing this before each prompt cleans it up.
+    # Skip inside tmux — tmux manages its own mouse state, and forwarding
+    # these disable codes through the pane breaks tmux's scroll gesture.
+    [ -n "$TMUX" ] && return
     printf '\e[?1000l\e[?1002l\e[?1003l\e[?1006l' 2>/dev/null
 }
 
