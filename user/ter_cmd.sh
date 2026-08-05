@@ -1,6 +1,18 @@
 # ── TER OS Master Controller ──
 # Interactive settings panel for startup features
 
+# Older loaders may not export this yet; discover the installed source checkout.
+if [ -z "${TER_REPO_DIR:-}" ] && [ -r "$HOME/.shell.d/.ter-repo" ]; then
+    IFS= read -r TER_REPO_DIR < "$HOME/.shell.d/.ter-repo"
+    export TER_REPO_DIR
+fi
+
+_ter_safe_shortcut_name() {
+    case "$1" in
+        ""|*/*|*..*|*[!A-Za-z0-9._-]*) return 1 ;;
+    esac
+}
+
 _ter_apply_theme() {
     local active_fg="$1"
     local inactive_fg="$2"
@@ -9,7 +21,7 @@ _ter_apply_theme() {
     local name="$5"
 
     local conf_file="$HOME/.tmux.conf"
-    local repo_conf="$HOME/ter/.tmux.conf"
+    local repo_conf="${TER_REPO_DIR:-$HOME/ter}/.tmux.conf"
 
     # ~/.tmux.conf is a symlink to repo_conf (install.sh); editing the repo is
     # sufficient. Fall back to editing both if the symlink isn't set up yet.
@@ -43,7 +55,8 @@ ter() {
     local conf="$HOME/.config/ter/startup.conf"
     mkdir -p "$HOME/.config/ter"
     
-    # Initialize defaults if missing
+    # Initialize defaults if missing, then parse only the supported values.
+    # Do not source this user-editable data file as shell code.
     if [ ! -f "$conf" ]; then
         cat > "$conf" << 'EOF'
 TMUX_AUTOSTART=true
@@ -51,9 +64,18 @@ WELCOME_DASHBOARD=true
 OPTIMIZE_STATUS=true
 EOF
     fi
-
-    # Read current state
-    source "$conf"
+    local key value extra
+    TMUX_AUTOSTART=true
+    WELCOME_DASHBOARD=true
+    OPTIMIZE_STATUS=true
+    while IFS='=' read -r key value extra; do
+        [ -z "${extra:-}" ] || continue
+        case "$key:$value" in
+            TMUX_AUTOSTART:true|TMUX_AUTOSTART:false) TMUX_AUTOSTART="$value" ;;
+            WELCOME_DASHBOARD:true|WELCOME_DASHBOARD:false) WELCOME_DASHBOARD="$value" ;;
+            OPTIMIZE_STATUS:true|OPTIMIZE_STATUS:false) OPTIMIZE_STATUS="$value" ;;
+        esac
+    done < "$conf"
 
     # Help screen
     if [ "$1" = "-h" ] || [ "$1" = "--help" ] || [ "$1" = "help" ]; then
@@ -106,7 +128,7 @@ EOF
 
     # Drift detector: compare repo source vs deployed runtime
     if [ "$1" = "doctor" ]; then
-        local repo="$HOME/ter"
+        local repo="${TER_REPO_DIR:-$HOME/ter}"
         local live="$HOME/.shell.d"
         local diffs=0
         local quiet=0
@@ -129,13 +151,16 @@ EOF
                 fi
             done < <(find "$repo/$dir" -type f)
         done
-        # Reverse: files in live but not in repo (excluding apps/)
+        # Reverse: files in live but not in repo (excluding apps/ and bytecode cache)
         for dir in core network user docs; do
             [ -d "$live/$dir" ] || continue
             while IFS= read -r f; do
+                case "$f" in
+                    *.pyc|*/__pycache__/*) continue ;;
+                esac
                 rel="${f#$live/$dir/}"
                 if [ ! -e "$repo/$dir/$rel" ]; then
-                    [ "$quiet" -eq 0 ] && echo -e "  \033[1;35m? orphan \033[0m  $dir/$rel"
+                    [ "$quiet" -eq 0 ] && echo -e "  \033[1;35m? new/orphan \033[0m  $dir/$rel (run 'ter sync' to import into repo)"
                     diffs=$((diffs+1))
                 fi
             done < <(find "$live/$dir" -type f)
@@ -144,13 +169,13 @@ EOF
             if [ "$diffs" -eq 0 ]; then
                 echo -e "  \033[1;32m✓ clean — repo and runtime match.\033[0m"
             else
-                echo -e "\n  \033[1;33m$diffs difference(s) found.\033[0m Run 'bash ~/ter/install.sh' to redeploy."
+                echo -e "\n  \033[1;33m$diffs difference(s) found.\033[0m Run 'ter sync --yes' to import new scripts into repo, or 'bash ~/ter/install.sh' to redeploy."
             fi
         elif [ "$diffs" -gt 0 ]; then
             echo -e "\033[1;33m⚠ ter doctor:\033[0m $diffs repo↔runtime drift(s) — run \`ter doctor\` for detail."
         fi
         # Secrets check: warn on vars listed in template but unset in environment.
-        if [ -f "$HOME/ter/secrets.template" ]; then
+        if [ -f "${TER_REPO_DIR:-$HOME/ter}/secrets.template" ]; then
             local unset_n=0 missing_vars=""
             while IFS= read -r line; do
                 local var="${line%%=*}"
@@ -159,7 +184,7 @@ EOF
                     unset_n=$((unset_n+1))
                     missing_vars="$missing_vars $var"
                 fi
-            done < <(grep -E '^[A-Z_][A-Z0-9_]*=' "$HOME/ter/secrets.template")
+            done < <(grep -E '^[A-Z_][A-Z0-9_]*=' "${TER_REPO_DIR:-$HOME/ter}/secrets.template")
             if [ "$unset_n" -gt 0 ]; then
                 if [ "$quiet" -eq 0 ]; then
                     echo -e "\n  \033[1;33m⚠ $unset_n secret(s) unset:\033[0m$missing_vars"
@@ -216,29 +241,50 @@ EOF
 
     # Reverse drift: copy drifted runtime files back into the repo.
     if [ "$1" = "sync" ]; then
-        local repo="$HOME/ter"
+        local repo="${TER_REPO_DIR:-$HOME/ter}"
         local live="$HOME/.shell.d"
-        local count=0
+        local count=0 apply=0
+        [ "${2:-}" = "--yes" ] && apply=1
         echo -e "\n\033[1;36m  🔄 TER Sync — runtime → repo\033[0m"
         for dir in core network user docs; do
-            [ -d "$repo/$dir" ] || continue
+            [ -d "$live/$dir" ] || continue
             while IFS= read -r f; do
+                case "$f" in
+                    *.pyc|*/__pycache__/*) continue ;;
+                esac
                 rel="${f#$live/$dir/}"
                 src="$repo/$dir/$rel"
-                if [ -e "$src" ] && ! cmp -s "$f" "$src"; then
-                    cp "$f" "$src"
-                    echo "  copied  $dir/$rel"
+                if [ ! -e "$src" ]; then
+                    if [ "$apply" -eq 1 ]; then
+                        mkdir -p "$(dirname "$src")"
+                        cp "$f" "$src"
+                        echo "  imported (new)  $dir/$rel"
+                    else
+                        echo "  would import (new)  $dir/$rel"
+                    fi
+                    count=$((count+1))
+                elif ! cmp -s "$f" "$src"; then
+                    if [ "$apply" -eq 1 ]; then
+                        cp "$f" "$src"
+                        echo "  updated  $dir/$rel"
+                    else
+                        echo "  would update  $dir/$rel"
+                    fi
                     count=$((count+1))
                 fi
             done < <(find "$live/$dir" -type f 2>/dev/null)
         done
-        echo -e "  \033[1;32m✓ $count file(s) synced.\033[0m\n"
+        if [ "$apply" -eq 1 ]; then
+            echo -e "  \033[1;32m✓ $count file(s) synced.\033[0m\n"
+        else
+            echo -e "  \033[1;33m$count file(s) would change. Re-run: ter sync --yes\033[0m\n"
+        fi
         return
     fi
 
     # Diagnostic snapshot of the current device.
     if [ "$1" = "snapshot" ]; then
-        local out="$HOME/ter/device.lock"
+        local out="${TER_REPO_DIR:-$HOME/ter}/device.lock"
         echo -e "\n\033[1;36m  📸 TER Snapshot → device.lock\033[0m"
         {
             echo "# device.lock — generated by 'ter snapshot' on $(date -Iseconds)"
@@ -257,11 +303,11 @@ EOF
             command -v pkg >/dev/null 2>&1 && pkg list-installed 2>/dev/null | sed -n 's|/.*||p' | sort -u
             echo ""
             echo "## ter required (packages.txt)"
-            [ -f "$HOME/ter/packages.txt" ] && grep -vE '^\s*(#|$)' "$HOME/ter/packages.txt" | sort -u
+            [ -f "${TER_REPO_DIR:-$HOME/ter}/packages.txt" ] && grep -vE '^\s*(#|$)' "${TER_REPO_DIR:-$HOME/ter}/packages.txt" | sort -u
             echo ""
             echo "## ter required NOT installed"
-            if [ -f "$HOME/ter/packages.txt" ] && command -v pkg >/dev/null 2>&1; then
-                want=$(grep -vE '^\s*(#|$)' "$HOME/ter/packages.txt" | sort -u)
+            if [ -f "${TER_REPO_DIR:-$HOME/ter}/packages.txt" ] && command -v pkg >/dev/null 2>&1; then
+                want=$(grep -vE '^\s*(#|$)' "${TER_REPO_DIR:-$HOME/ter}/packages.txt" | sort -u)
                 have=$(pkg list-installed 2>/dev/null | sed -n 's|/.*||p' | sort -u)
                 comm -23 <(echo "$want") <(echo "$have")
             fi
@@ -278,7 +324,7 @@ EOF
 
     # One-screen "where am I" status.
     if [ "$1" = "info" ]; then
-        local repo="$HOME/ter"
+        local repo="${TER_REPO_DIR:-$HOME/ter}"
         local sha tag dirty drift theme banner
         sha=$(git -C "$repo" rev-parse --short HEAD 2>/dev/null || echo "?")
         tag=$(git -C "$repo" describe --tags --always 2>/dev/null || echo "$sha")
@@ -377,9 +423,9 @@ EOF
         # Secrets scaffold.
         local sec_dir="$HOME/.config/ter"
         local sec_file="$sec_dir/secrets.env"
-        if [ ! -f "$sec_file" ] && [ -f "$HOME/ter/secrets.template" ]; then
+        if [ ! -f "$sec_file" ] && [ -f "${TER_REPO_DIR:-$HOME/ter}/secrets.template" ]; then
             mkdir -p "$sec_dir"
-            cp "$HOME/ter/secrets.template" "$sec_file"
+            cp "${TER_REPO_DIR:-$HOME/ter}/secrets.template" "$sec_file"
             chmod 600 "$sec_file"
             echo "→ created $sec_file — edit to fill in values"
         else
@@ -392,7 +438,7 @@ EOF
 
     # Pull from GitHub and redeploy.
     if [ "$1" = "update" ]; then
-        local repo="$HOME/ter"
+        local repo="${TER_REPO_DIR:-$HOME/ter}"
         echo -e "\n\033[1;36m  ⬇  TER Update\033[0m"
         ( cd "$repo" && git pull --ff-only ) || { echo "git pull failed"; return 1; }
         ( cd "$repo" && bash install.sh ) || return 1
@@ -493,8 +539,8 @@ EOF
         # ter shortcut rm <name>
         if [ "$2" = "rm" ] || [ "$2" = "remove" ] || [ "$2" = "del" ]; then
             local n="$3"
-            if [ -z "$n" ]; then
-                echo "Usage: ter shortcut rm <name>"
+            if ! _ter_safe_shortcut_name "$n"; then
+                echo "Shortcut name must use only letters, digits, dot, underscore, or hyphen."
                 return 1
             fi
             local f="$HOME/.shortcuts/$n"
@@ -509,6 +555,10 @@ EOF
 
         if [ -n "$2" ]; then
             local name="$2"
+            if ! _ter_safe_shortcut_name "$name"; then
+                echo "Shortcut name must use only letters, digits, dot, underscore, or hyphen."
+                return 1
+            fi
             shift 2
             # Parse optional flags: --silent skips the "Press Enter to exit" tail.
             local silent=0
