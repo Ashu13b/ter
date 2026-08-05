@@ -7,6 +7,36 @@ REPO="$(cd "$(dirname "$0")" && pwd)"
 EXPECT="re cls scan adbcon optimize tabname apps ter dvop adb-apk"
 FAIL=0
 
+fail() {
+    echo "  [FAIL] $1"
+    FAIL=$((FAIL+1))
+}
+
+check_syntax() {
+    local f
+    for f in "$REPO"/install.sh "$REPO"/bootstrap.sh "$REPO"/smoke.sh "$REPO"/core/*.sh "$REPO"/network/*.sh "$REPO"/user/*.sh; do
+        bash -n "$f" || fail "bash syntax: ${f#$REPO/}"
+    done
+    for f in "$REPO"/make_motd.py "$REPO"/user/*.py; do
+        python3 -m py_compile "$f" || fail "Python syntax: ${f#$REPO/}"
+    done
+}
+
+check_isolated_install() {
+    local test_home
+    test_home=$(mktemp -d "${TMPDIR:-/tmp}/ter-install.XXXXXX") || { fail "could not create install test directory"; return; }
+    mkdir -p "$test_home/storage"
+    if HOME="$test_home" TER_SKIP_PKG=1 TER_SKIP_MOTD=1 TER_SKIP_RELOAD=1 TER_SKIP_HOOK=1 bash "$REPO/install.sh" >/dev/null 2>&1 \
+        && [ "$(cat "$test_home/.shell.d/.ter-repo")" = "$REPO" ] \
+        && [ -f "$test_home/.shell.d/core/00-style.sh" ] \
+        && [ -f "$test_home/.bashrc" ]; then
+        echo "  [ ok ] isolated install"
+    else
+        fail "isolated install"
+    fi
+    rm -rf "$test_home"
+}
+
 run_in() {
     local shell="$1"
     local label="$2"
@@ -40,6 +70,8 @@ run_in() {
 }
 
 echo "TER smoke test — $REPO"
+check_syntax
+check_isolated_install
 # zsh doesn't support --noprofile; use -f instead.
 run_in bash "bash"
 if command -v zsh >/dev/null 2>&1; then

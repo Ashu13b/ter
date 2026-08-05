@@ -1,7 +1,26 @@
 #!/bin/bash
 
+_adbcon_valid_ipv4() {
+    local ip="$1" o1 o2 o3 o4 extra n
+    [[ "$ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || return 1
+    IFS=. read -r o1 o2 o3 o4 extra <<< "$ip"
+    [ -z "$extra" ] || return 1
+    for n in "$o1" "$o2" "$o3" "$o4"; do (( 10#$n <= 255 )) || return 1; done
+}
+
+_adbcon_valid_port() {
+    [[ "$1" =~ ^[0-9]{1,5}$ ]] && (( 10#$1 >= 1 && 10#$1 <= 65535 ))
+}
+
 adbcon() {
     local LOCAL_LOOPBACK="127.0.0.1:5555"
+    local scan_ports=0
+    [ "${1:-}" = "--scan" ] && scan_ports=1
+
+    if ! command -v adb >/dev/null 2>&1; then
+        echo "adbcon requires android-tools (run: pkg install android-tools)."
+        return 127
+    fi
 
     if [[ "$1" == "-d" ]] || [[ "$1" == "--exit" ]] || [[ "$1" == "disconnect" ]]; then
         echo -e "\e[1;34m[ ADB DISCONNECT ]\e[0m"
@@ -18,7 +37,8 @@ adbcon() {
         echo "Usage: adbcon [option]"
         echo ""
         echo "Options:"
-        echo "  adbcon                     Launch Smart ADB connection wizard"
+        echo "  adbcon                     Launch ADB connection wizard (manual port entry)"
+        echo "  adbcon --scan              Scan for an already-paired wireless ADB port"
         echo "  adbcon -d, --exit          Disconnect and kill the active ADB server"
         echo "  adbcon -h, --help          Show this connection help manual"
         echo "========================================"
@@ -76,6 +96,10 @@ adbcon() {
     read input_ip
     local ORIG_IP="$IP"
     IP=${input_ip:-$IP}
+    if ! _adbcon_valid_ipv4 "$IP"; then
+        echo "Invalid IPv4 address: $IP"
+        return 1
+    fi
 
     # Subnet sanity check — if user typed an IP outside our /24, warn but don't block.
     if [ -n "$STA_IP" ] && [ "$IP" != "$ORIG_IP" ]; then
@@ -88,14 +112,21 @@ adbcon() {
         fi
     fi
 
+    if [ "$scan_ports" -eq 1 ] && ! command -v python3 >/dev/null 2>&1; then
+        echo "adbcon --scan requires python3 (run: pkg install python)."
+        return 127
+    fi
+
     echo -e "\n\e[1;35m[ REQUIRED PREPARATION ]\e[0m"
     echo -e "1. Go to phone \e[1;37mSettings\e[0m -> \e[1;37mDeveloper Options\e[0m."
     echo -e "2. Scroll down to \e[1;37mWireless Debugging\e[0m and turn it \e[1;32mON\e[0m."
     echo -e "   (If it asks to allow the network, click Allow/Always Allow)\n"
 
-    # 3. Auto-detect: try to find an open Wireless Debugging port
-    echo -e "🔍 \e[1;36mChecking if already paired (scanning for open port)...\e[0m"
-    local ports=$(python3 -c '
+    # 3. Optional discovery is deliberately opt-in: broad scans are costly on phones.
+    local ports=""
+    if [ "$scan_ports" -eq 1 ]; then
+        echo -e "🔍 \e[1;36mScanning for an already-paired Wireless Debugging port...\e[0m"
+        ports=$(python3 -c '
 import socket, sys, concurrent.futures
 ip = sys.argv[1]
 def scan(p):
@@ -109,6 +140,9 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=250) as e:
     for r in results:
         if r: print(r)
 ' "$IP" 2>/dev/null)
+    else
+        echo "Skipping port scan. Use 'adbcon --scan' to search for an already-paired port."
+    fi
 
     local auto_connected=0
     local current_port=""
@@ -191,6 +225,10 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=250) as e:
                 echo -e "\e[1;31m❌ Cancelled.\e[0m"
                 return 1
             fi
+            if ! _adbcon_valid_port "$pair_port"; then
+                echo "Invalid pairing port: $pair_port"
+                return 1
+            fi
 
             echo -e "\nPairing with $IP:$pair_port..."
 
@@ -230,6 +268,10 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=250) as e:
 
         if [ -z "$current_port" ]; then
             echo -e "\e[1;31m❌ Cancelled.\e[0m"
+            return 1
+        fi
+        if ! _adbcon_valid_port "$current_port"; then
+            echo "Invalid connection port: $current_port"
             return 1
         fi
 
