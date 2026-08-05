@@ -10,3 +10,8 @@ device.lock
 # Secrets — only the template is tracked; live values live in
 # ~/.config/ter/secrets.env (outside this repo).
 secrets.env
+
+# Python bytecode
+__pycache__/
+*.pyc
+
