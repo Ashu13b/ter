@@ -1,0 +1,11 @@
+# TER Ignore Patterns for doctor & sync
+# Files matching these patterns will NOT be synced into the git repository.
+
+*.pyc
+__pycache__
+*.tmp
+*.bak
+tmp_*
+test_*
+scratch_*
+local/

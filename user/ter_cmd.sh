@@ -51,6 +51,37 @@ _ter_apply_theme() {
     tmux source-file "$conf_file" 2>/dev/null || true
 }
 
+_ter_is_ignored() {
+    local rel_path="$1"
+    local file_name="${rel_path##*/}"
+    
+    # Built-in ignore defaults
+    case "$file_name" in
+        *.pyc|*.tmp|*.bak|tmp_*|test_*|scratch_*) return 0 ;;
+    esac
+    case "$rel_path" in
+        */__pycache__/*|__pycache__/*|local/*|*/local/*) return 0 ;;
+    esac
+
+    # Check .terignore
+    local ignore_file="$HOME/.shell.d/.terignore"
+    [ -f "$ignore_file" ] || ignore_file="${TER_REPO_DIR:-$HOME/ter}/.terignore"
+    if [ -f "$ignore_file" ]; then
+        local pat
+        while IFS= read -r pat || [ -n "$pat" ]; do
+            pat=$(echo "$pat" | sed -e 's/[[:space:]]*#.*$//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+            [ -n "$pat" ] || continue
+            case "$rel_path" in
+                $pat) return 0 ;;
+            esac
+            case "$file_name" in
+                $pat) return 0 ;;
+            esac
+        done < "$ignore_file"
+    fi
+    return 1
+}
+
 ter() {
     local conf="$HOME/.config/ter/startup.conf"
     mkdir -p "$HOME/.config/ter"
@@ -126,22 +157,19 @@ EOF
         return
     fi
 
-    # Drift detector: compare repo source vs deployed runtime
+    # Diagnostics check for doctor
     if [ "$1" = "doctor" ]; then
         local repo="${TER_REPO_DIR:-$HOME/ter}"
         local live="$HOME/.shell.d"
-        local diffs=0
-        local quiet=0
-        [ "$2" = "--quiet" ] || [ "$2" = "-q" ] && quiet=1
-        if [ "$quiet" -eq 0 ]; then
-            echo -e "\n\033[1;36m  🩺 TER Doctor — repo vs deployed\033[0m"
-            echo -e "\033[1;36m  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
-        fi
+        local diffs=0 quiet=0
+        [ "${2:-}" = "-q" ] || [ "${2:-}" = "--quiet" ] && quiet=1
+        [ "$quiet" -eq 0 ] && echo -e "\n\033[1;36m  🩺 TER Doctor — repo vs runtime check\033[0m"
         for dir in core network user docs; do
             [ -d "$repo/$dir" ] || continue
             while IFS= read -r f; do
                 rel="${f#$repo/$dir/}"
                 target="$live/$dir/$rel"
+                _ter_is_ignored "$dir/$rel" && continue
                 if [ ! -e "$target" ]; then
                     [ "$quiet" -eq 0 ] && echo -e "  \033[1;33m+ missing\033[0m  $dir/$rel"
                     diffs=$((diffs+1))
@@ -149,27 +177,25 @@ EOF
                     [ "$quiet" -eq 0 ] && echo -e "  \033[1;31m≠ drift  \033[0m  $dir/$rel"
                     diffs=$((diffs+1))
                 fi
-            done < <(find "$repo/$dir" -type f)
+            done < <(find "$repo/$dir" -type f 2>/dev/null)
         done
-        # Reverse: files in live but not in repo (excluding apps/ and bytecode cache)
+        # Reverse: files in live but not in repo (excluding apps/ and ignored files)
         for dir in core network user docs; do
             [ -d "$live/$dir" ] || continue
             while IFS= read -r f; do
-                case "$f" in
-                    *.pyc|*/__pycache__/*) continue ;;
-                esac
                 rel="${f#$live/$dir/}"
+                _ter_is_ignored "$dir/$rel" && continue
                 if [ ! -e "$repo/$dir/$rel" ]; then
-                    [ "$quiet" -eq 0 ] && echo -e "  \033[1;35m? new/orphan \033[0m  $dir/$rel (run 'ter sync' to import into repo)"
+                    [ "$quiet" -eq 0 ] && echo -e "  \033[1;35m? new/untracked \033[0m  $dir/$rel"
                     diffs=$((diffs+1))
                 fi
-            done < <(find "$live/$dir" -type f)
+            done < <(find "$live/$dir" -type f 2>/dev/null)
         done
         if [ "$quiet" -eq 0 ]; then
             if [ "$diffs" -eq 0 ]; then
                 echo -e "  \033[1;32m✓ clean — repo and runtime match.\033[0m"
             else
-                echo -e "\n  \033[1;33m$diffs difference(s) found.\033[0m Run 'ter sync --yes' to import new scripts into repo, or 'bash ~/ter/install.sh' to redeploy."
+                echo -e "\n  \033[1;33m$diffs difference(s) found.\033[0m Run 'ter sync' to review and import into repo, or 'bash ~/ter/install.sh' to redeploy."
             fi
         elif [ "$diffs" -gt 0 ]; then
             echo -e "\033[1;33m⚠ ter doctor:\033[0m $diffs repo↔runtime drift(s) — run \`ter doctor\` for detail."
@@ -190,12 +216,9 @@ EOF
                     echo -e "\n  \033[1;33m⚠ $unset_n secret(s) unset:\033[0m$missing_vars"
                     echo -e "    Edit ~/.config/ter/secrets.env (copy from secrets.template)."
                 fi
-                # secrets absence is intentional-ish — don't nag in quiet mode.
             fi
         fi
-        # Services health: sshd listener on the Termux default port.
-        # NEXUS and any inbound reverse-tunnel path assume :8022 is answering.
-        # A silent sshd is the exact failure mode that flapped NEXUS for hours.
+        # Services health check
         if [ -f "$PREFIX/etc/ssh/sshd_config" ]; then
             local sshd_port sshd_status
             sshd_port=$(awk '/^Port /{print $2; exit}' "$PREFIX/etc/ssh/sshd_config")
@@ -207,32 +230,7 @@ EOF
                 else
                     echo -e "\n  \033[1;33m⚠ sshd not listening on :$sshd_port\033[0m (sv: ${sshd_status:-unknown})"
                     echo -e "    Fix: \033[1;37msv up sshd\033[0m  (or \033[1;37msv restart sshd\033[0m)"
-                    [ "$sshd_port" != "8022" ] && echo -e "    Note: NEXUS + adbcon expect :8022 — current config is :$sshd_port."
                 fi
-            elif [ "$sshd_port" != "8022" ]; then
-                if [ "$quiet" -eq 1 ]; then
-                    echo -e "\033[1;33m⚠ ter doctor:\033[0m sshd on :$sshd_port (NEXUS expects :8022)."
-                else
-                    echo -e "\n  \033[1;33m⚠ sshd on non-default port :$sshd_port\033[0m — NEXUS assumes :8022."
-                fi
-            fi
-        fi
-        # Termux companion apps: Widget + API. Missing these silently breaks
-        # shortcut taps and termux-toast / termux-notification calls.
-        local widget_dir="/data/data/com.termux.widget"
-        local api_dir="/data/data/com.termux.api"
-        if [ ! -d "$widget_dir" ]; then
-            if [ "$quiet" -eq 1 ]; then
-                echo -e "\033[1;33m⚠ ter doctor:\033[0m Termux:Widget not installed — shortcut taps won't fire."
-            else
-                echo -e "\n  \033[1;33m⚠ Termux:Widget missing\033[0m — install from F-Droid/Play (matching signature)."
-            fi
-        fi
-        if [ ! -d "$api_dir" ]; then
-            if [ "$quiet" -eq 1 ]; then
-                echo -e "\033[1;33m⚠ ter doctor:\033[0m Termux:API not installed — termux-toast / notifications will no-op."
-            else
-                echo -e "\n  \033[1;33m⚠ Termux:API missing\033[0m — install from F-Droid/Play (matching signature)."
             fi
         fi
         [ "$quiet" -eq 0 ] && echo ""
@@ -244,41 +242,54 @@ EOF
         local repo="${TER_REPO_DIR:-$HOME/ter}"
         local live="$HOME/.shell.d"
         local count=0 apply=0
-        [ "${2:-}" = "--yes" ] && apply=1
+        [ "${2:-}" = "--yes" ] || [ "${2:-}" = "-y" ] && apply=1
+        
         echo -e "\n\033[1;36m  🔄 TER Sync — runtime → repo\033[0m"
+        local pending_sync=()
+        local pending_types=()
+
         for dir in core network user docs; do
             [ -d "$live/$dir" ] || continue
             while IFS= read -r f; do
-                case "$f" in
-                    *.pyc|*/__pycache__/*) continue ;;
-                esac
                 rel="${f#$live/$dir/}"
+                _ter_is_ignored "$dir/$rel" && continue
                 src="$repo/$dir/$rel"
                 if [ ! -e "$src" ]; then
-                    if [ "$apply" -eq 1 ]; then
-                        mkdir -p "$(dirname "$src")"
-                        cp "$f" "$src"
-                        echo "  imported (new)  $dir/$rel"
-                    else
-                        echo "  would import (new)  $dir/$rel"
-                    fi
+                    pending_sync+=("$f:$src:$dir/$rel")
+                    pending_types+=("new")
+                    echo "  [new script]  $dir/$rel"
                     count=$((count+1))
                 elif ! cmp -s "$f" "$src"; then
-                    if [ "$apply" -eq 1 ]; then
-                        cp "$f" "$src"
-                        echo "  updated  $dir/$rel"
-                    else
-                        echo "  would update  $dir/$rel"
-                    fi
+                    pending_sync+=("$f:$src:$dir/$rel")
+                    pending_types+=("update")
+                    echo "  [updated]     $dir/$rel"
                     count=$((count+1))
                 fi
             done < <(find "$live/$dir" -type f 2>/dev/null)
         done
-        if [ "$apply" -eq 1 ]; then
-            echo -e "  \033[1;32m✓ $count file(s) synced.\033[0m\n"
-        else
-            echo -e "  \033[1;33m$count file(s) would change. Re-run: ter sync --yes\033[0m\n"
+
+        if [ "$count" -eq 0 ]; then
+            echo -e "  \033[1;32m✓ Everything in sync! No unignored custom scripts found.\033[0m\n"
+            return
         fi
+
+        if [ "$apply" -eq 0 ]; then
+            echo ""
+            read -p "  Sync these $count file(s) into your ~/ter git repo? [y/N]: " confirm
+            case "$confirm" in
+                y|Y|yes|YES) apply=1 ;;
+                *) echo -e "  \033[1;33mSync cancelled. No repo files changed.\033[0m\n"; return ;;
+            esac
+        fi
+
+        local item f src rel type
+        for item in "${pending_sync[@]}"; do
+            IFS=':' read -r f src rel <<< "$item"
+            mkdir -p "$(dirname "$src")"
+            cp "$f" "$src"
+            echo "  ✓ copied  $rel -> $src"
+        done
+        echo -e "  \033[1;32m✓ $count file(s) synced to $repo.\033[0m\n"
         return
     fi
 
