@@ -64,6 +64,21 @@ All modular scripts are automatically sourced on terminal startup. They are orga
       * `-r`                   Reinstall (keep app data)
       * `-f, --force`, `-y`    Skip confirmation prompt
 
+* **`codex-network-fix.sh`**: Defines `codext` command launcher:
+  * Auto-starts local `tinyproxy` (port 8888).
+  * Injects Termux SSL certificate paths (`SSL_CERT_FILE`, `SSL_CERT_DIR`) and proxy environment variables (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `http_proxy`, `https_proxy`, `all_proxy`).
+  * Fixes WebSockets and MCP server handshakes for OpenAI Codex CLI.
+
+---
+
+## 🛡️ Automated Backups (`~/.config/ter/backups/`)
+
+TER features an automated rolling backup engine built into `install.sh`:
+* **Location:** [`~/.config/ter/backups/backup_YYYYMMDD_HHMMSS/`](file:///data/data/com.termux/files/home/.config/ter/backups/)
+* **Contents:** Full timestamped snapshots of `~/.shell.d/` modules, user scripts, and `~/.config/ter/` configurations before any installer deployment.
+* **Retention Policy:** Automatically purges older snapshots, retaining the **10 most recent backups**.
+* **Preservation:** Custom untracked user scripts in `~/.shell.d/` are preserved during module deployments.
+
 ---
 
 ## 🔌 App Registration System
@@ -71,7 +86,7 @@ All modular scripts are automatically sourced on terminal startup. They are orga
 TER supports decoupled third-party app additions under `~/.shell.d/apps/`. Any repository or application can register itself as a shell extension by adding a subdirectory under `~/.shell.d/apps/<app-name>/`.
 
 ### Manifest File (`manifest.json`)
-Each registered app should contain a `manifest.json` file in its registration directory. Example format:
+Each registered app should contain a `manifest.json` file in its registration directory. App `*.sh` files are sourced automatically on terminal startup, so register code only from repositories you trust. Example format:
 ```json
 {
     "name": "NEXUS",

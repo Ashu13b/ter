@@ -20,6 +20,7 @@ Welcome to the command line interface guide for the unified **TER OS** Termux en
 | `scan` | Security | Local subnet device discoverer, plain-text protocol sniffer, and vulnerability scanner | `scan -h` |
 | `alm` | Utility | Interactive shell alias manager (list, add, edit, reload) | `alm -h` / `alm --help` |
 | `apps` | Registry | Termux plug-in app registry loader and manifest visualizer | `apps -h` |
+| `codext` | AI / Network | OpenAI Codex launcher with auto-tinyproxy and Termux TLS cert fixes | `codext --help` |
 | `ter` | System | Master Controller dashboard and interactive theme switcher | `ter -h` / `ter --help` |
 
 ---
