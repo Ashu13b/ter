@@ -2,9 +2,7 @@
 # Automatically launches the tabbed tmux interface on startup
 # if we aren't already inside a tmux session.
 
-if [ -f "$HOME/.config/ter/startup.conf" ]; then
-    source "$HOME/.config/ter/startup.conf"
-fi
+type _ter_load_startup_config >/dev/null 2>&1 && _ter_load_startup_config
 
 if [ "$TMUX_AUTOSTART" != "false" ]; then
 

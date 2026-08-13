@@ -4,8 +4,10 @@
 set -u
 
 REPO="$(cd "$(dirname "$0")" && pwd)"
-EXPECT="re cls scan adbcon optimize tabname apps ter dvop adb-apk"
+EXPECT="re cls scan adbcon optimize tabname apps ter dvop adb-apk codext"
 FAIL=0
+SMOKE_OUTPUT=$(mktemp "${TMPDIR:-/tmp}/ter-smoke.XXXXXX") || exit 1
+trap 'rm -f "$SMOKE_OUTPUT"' EXIT
 
 fail() {
     echo "  [FAIL] $1"
@@ -26,13 +28,77 @@ check_isolated_install() {
     local test_home
     test_home=$(mktemp -d "${TMPDIR:-/tmp}/ter-install.XXXXXX") || { fail "could not create install test directory"; return; }
     mkdir -p "$test_home/storage"
-    if HOME="$test_home" TER_SKIP_PKG=1 TER_SKIP_MOTD=1 TER_SKIP_RELOAD=1 TER_SKIP_HOOK=1 bash "$REPO/install.sh" >/dev/null 2>&1 \
-        && [ "$(cat "$test_home/.shell.d/.ter-repo")" = "$REPO" ] \
-        && [ -f "$test_home/.shell.d/core/00-style.sh" ] \
-        && [ -f "$test_home/.bashrc" ]; then
-        echo "  [ ok ] isolated install"
-    else
+    if ! HOME="$test_home" TER_SKIP_PKG=1 TER_SKIP_MOTD=1 TER_SKIP_RELOAD=1 TER_SKIP_HOOK=1 bash "$REPO/install.sh" >/dev/null 2>&1; then
         fail "isolated install"
+        rm -rf "$test_home"
+        return
+    fi
+
+    printf '%s\n' '# custom' > "$test_home/.shell.d/user/custom-local.sh"
+    printf '%s\n' '# retired' > "$test_home/.shell.d/user/retired-module.sh"
+    printf 'user/retired-module.sh\0' >> "$test_home/.shell.d/.ter-managed-files"
+    printf '%s\n' 'important=true' > "$test_home/.config/ter/private.conf"
+
+    if ! HOME="$test_home" TER_SKIP_PKG=1 TER_SKIP_MOTD=1 TER_SKIP_RELOAD=1 TER_SKIP_HOOK=1 bash "$REPO/install.sh" >/dev/null 2>&1; then
+        fail "isolated upgrade"
+        rm -rf "$test_home"
+        return
+    fi
+
+    local nested_backup
+    nested_backup=$(find "$test_home/.config/ter/backups" -path '*/ter_config/backups' -print -quit 2>/dev/null)
+    if [ "$(cat "$test_home/.shell.d/.ter-repo")" = "$REPO" ] \
+        && [ -f "$test_home/.shell.d/core/00-style.sh" ] \
+        && [ -f "$test_home/.bashrc" ] \
+        && [ -f "$test_home/.shell.d/.ter-managed-files" ] \
+        && [ -f "$test_home/.shell.d/user/custom-local.sh" ] \
+        && [ ! -e "$test_home/.shell.d/user/retired-module.sh" ] \
+        && find "$test_home/.config/ter/backups" -type f -name private.conf -print -quit | grep -q . \
+        && [ -z "$nested_backup" ]; then
+        echo "  [ ok ] isolated install + upgrade"
+    else
+        fail "isolated install + upgrade invariants"
+    fi
+
+    mkdir "$test_home/.config/ter/install.lock"
+    printf '%s\n' "$$" > "$test_home/.config/ter/install.lock/pid"
+    if HOME="$test_home" TER_SKIP_PKG=1 TER_SKIP_MOTD=1 TER_SKIP_RELOAD=1 TER_SKIP_HOOK=1 bash "$REPO/install.sh" >/dev/null 2>&1; then
+        fail "concurrent install lock"
+    else
+        echo "  [ ok ] concurrent install lock"
+    fi
+
+    rm -f "$test_home/.config/ter/install.lock/pid"
+    rmdir "$test_home/.config/ter/install.lock"
+    printf '%s\n' '# rollback marker' >> "$test_home/.shell.d/core/00-style.sh"
+    printf '%s\n' '/previous/repository' > "$test_home/.shell.d/.ter-repo"
+    printf '%s\n' '{"previous":true}' > "$test_home/.shell.d/manifest.json"
+    rm -f "$test_home/.termux/termux.properties"
+    ln -s /dev/full "$test_home/.termux/termux.properties"
+    if HOME="$test_home" TER_SKIP_PKG=1 TER_SKIP_MOTD=1 TER_SKIP_RELOAD=1 TER_SKIP_HOOK=1 \
+        bash "$REPO/install.sh" >/dev/null 2>&1 \
+        || ! grep -q '# rollback marker' "$test_home/.shell.d/core/00-style.sh" \
+        || [ "$(cat "$test_home/.shell.d/.ter-repo")" != "/previous/repository" ] \
+        || ! grep -q 'previous' "$test_home/.shell.d/manifest.json"; then
+        fail "post-deploy failure rollback"
+    else
+        echo "  [ ok ] post-deploy failure rollback"
+    fi
+    rm -rf "$test_home"
+}
+
+check_package_failure() {
+    local test_home
+    test_home=$(mktemp -d "${TMPDIR:-/tmp}/ter-pkg-fail.XXXXXX") || { fail "could not create package test directory"; return; }
+    mkdir -p "$test_home/storage"
+    if TEST_HOME="$test_home" TEST_REPO="$REPO" bash --noprofile --norc -c '
+        pkg() { return 1; }
+        export -f pkg
+        HOME="$TEST_HOME" TER_SKIP_MOTD=1 TER_SKIP_RELOAD=1 TER_SKIP_HOOK=1 bash "$TEST_REPO/install.sh" >/dev/null 2>&1
+    '; then
+        fail "required package failure propagation"
+    else
+        echo "  [ ok ] required package failure propagation"
     fi
     rm -rf "$test_home"
 }
@@ -45,55 +111,220 @@ run_in() {
         return
     fi
 
+    local rc=0
     "$shell" --noprofile --norc 2>/dev/null -c '
+        smoke_failed=0
         shopt -s expand_aliases 2>/dev/null
         for dir in core network user; do
             for f in '"$REPO"'/$dir/*.sh; do
                 [ -f "$f" ] || continue
                 # shellcheck disable=SC1090
-                source "$f" 2>/dev/null || echo "SOURCE_FAIL:$f"
+                source "$f" 2>/dev/null || { echo "SOURCE_FAIL:$f"; smoke_failed=1; }
             done
         done
         for cmd in '"$EXPECT"'; do
-            type "$cmd" >/dev/null 2>&1 || echo "MISSING:$cmd"
+            type "$cmd" >/dev/null 2>&1 || { echo "MISSING:$cmd"; smoke_failed=1; }
         done
-    ' > ${TMPDIR:-/tmp}/ter-smoke.$$ 2>&1 || true
+        [ "$smoke_failed" -eq 0 ] || exit 1
+        echo SMOKE_COMPLETE
+    ' > "$SMOKE_OUTPUT" 2>&1 || rc=$?
 
-    if grep -q "^SOURCE_FAIL\|^MISSING" ${TMPDIR:-/tmp}/ter-smoke.$$; then
+    if [ "$rc" -ne 0 ] || ! grep -q '^SMOKE_COMPLETE$' "$SMOKE_OUTPUT" \
+        || grep -q "^SOURCE_FAIL\|^MISSING" "$SMOKE_OUTPUT"; then
         echo "  [FAIL] $label:"
-        sed 's/^/    /' ${TMPDIR:-/tmp}/ter-smoke.$$
+        sed 's/^/    /' "$SMOKE_OUTPUT"
         FAIL=$((FAIL+1))
     else
         echo "  [ ok ] $label"
     fi
-    rm -f ${TMPDIR:-/tmp}/ter-smoke.$$
+    : > "$SMOKE_OUTPUT"
+}
+
+check_adb_validation() {
+    local adb_test_dir
+    # shellcheck disable=SC1090
+    source "$REPO/network/adb_connect.sh"
+    if _adbcon_valid_ipv4 "192.168.1.10" \
+        && ! _adbcon_valid_ipv4 "256.1.1.1" \
+        && ! _adbcon_valid_ipv4 "1.2.3" \
+        && _adbcon_valid_port "1" \
+        && _adbcon_valid_port "65535" \
+        && ! _adbcon_valid_port "0" \
+        && ! _adbcon_valid_port "65536" \
+        && _adbcon_valid_pair_code "123456" \
+        && ! _adbcon_valid_pair_code "12345" \
+        && ! _adbcon_valid_pair_code "12ab56" \
+        && PATH=/nonexistent adbcon --help >/dev/null \
+        && ! adbcon --unknown >/dev/null 2>&1; then
+        echo "  [ ok ] adb input validation"
+    else
+        fail "adb input validation"
+        return
+    fi
+
+    adb_test_dir=$(mktemp -d "${TMPDIR:-/tmp}/ter-adb-timeout.XXXXXX") || { fail "could not create adb timeout test directory"; return; }
+    printf '%s\n' '#!/bin/sh' 'sleep 2' > "$adb_test_dir/adb"
+    chmod +x "$adb_test_dir/adb"
+    if PATH="$adb_test_dir:$PATH" ADBCON_TIMEOUT_SECONDS=1 _adbcon_timed devices >/dev/null 2>&1; then
+        fail "adb timeout enforcement"
+    else
+        echo "  [ ok ] adb timeout enforcement"
+    fi
+    if _adbcon_pair_succeeded 0 "Successfully paired to 192.168.1.2:12345" \
+        && ! _adbcon_pair_succeeded 0 "device is not paired" \
+        && ! _adbcon_pair_succeeded 1 "Successfully paired"; then
+        echo "  [ ok ] adb pairing result validation"
+    else
+        fail "adb pairing result validation"
+    fi
+    if (
+        _adbcon_timed() { [ "$1" != "kill-server" ]; }
+        adbcon disconnect >/dev/null 2>&1
+    ); then
+        fail "adb disconnect failure propagation"
+    else
+        echo "  [ ok ] adb disconnect failure propagation"
+    fi
+    rm -rf "$adb_test_dir"
+}
+
+check_sync_paths() {
+    local test_home shell
+    test_home=$(mktemp -d "${TMPDIR:-/tmp}/ter-sync.XXXXXX") || { fail "could not create sync test directory"; return; }
+    mkdir -p "$test_home/.shell.d/user" "$test_home/repo/user"
+    printf '%s\n' 'colon payload' > "$test_home/.shell.d/user/name:part.sh"
+    printf '%s\n' 'unicode payload' > "$test_home/.shell.d/user/space ✓.sh"
+
+    for shell in bash zsh; do
+        command -v "$shell" >/dev/null 2>&1 || continue
+        rm -f "$test_home/repo/user/name:part.sh" "$test_home/repo/user/space ✓.sh"
+        if [ "$shell" = "bash" ]; then
+            HOME="$test_home" TER_REPO_DIR="$test_home/repo" TER_SOURCE="$REPO" \
+                bash --noprofile --norc -c 'source "$TER_SOURCE/user/ter_cmd.sh"; ter sync --yes >/dev/null'
+        else
+            HOME="$test_home" TER_REPO_DIR="$test_home/repo" TER_SOURCE="$REPO" \
+                zsh -f -c 'source "$TER_SOURCE/user/ter_cmd.sh"; ter sync --yes >/dev/null'
+        fi
+        if [ "$(< "$test_home/repo/user/name:part.sh")" != "colon payload" ] \
+            || [ "$(< "$test_home/repo/user/space ✓.sh")" != "unicode payload" ]; then
+            fail "atomic sync paths ($shell)"
+            rm -rf "$test_home"
+            return
+        fi
+    done
+
+    printf '%s\n' 'outside' > "$test_home/outside"
+    rm -f "$test_home/repo/user/name:part.sh"
+    ln -s "$test_home/outside" "$test_home/repo/user/name:part.sh"
+    printf '%s\n' 'changed' > "$test_home/.shell.d/user/name:part.sh"
+    if HOME="$test_home" TER_REPO_DIR="$test_home/repo" TER_SOURCE="$REPO" \
+        bash --noprofile --norc -c 'source "$TER_SOURCE/user/ter_cmd.sh"; ter sync --yes >/dev/null 2>&1' \
+        || [ "$(< "$test_home/outside")" != "outside" ]; then
+        fail "sync symlink refusal"
+        rm -rf "$test_home"
+        return
+    fi
+
+    rm -f "$test_home/repo/user/name:part.sh"
+    mv "$test_home/repo/user" "$test_home/repo/user.real"
+    mkdir "$test_home/outside-dir"
+    ln -s "$test_home/outside-dir" "$test_home/repo/user"
+    if HOME="$test_home" TER_REPO_DIR="$test_home/repo" TER_SOURCE="$REPO" \
+        bash --noprofile --norc -c 'source "$TER_SOURCE/user/ter_cmd.sh"; ter sync --yes >/dev/null 2>&1' \
+        || [ -e "$test_home/outside-dir/name:part.sh" ]; then
+        fail "sync parent symlink refusal"
+        rm -rf "$test_home"
+        return
+    fi
+    rm "$test_home/repo/user"
+    mv "$test_home/repo/user.real" "$test_home/repo/user"
+
+    mkdir "$test_home/.config/ter/sync.lock"
+    printf '%s\n' "$$" > "$test_home/.config/ter/sync.lock/pid"
+    if HOME="$test_home" TER_REPO_DIR="$test_home/repo" TER_SOURCE="$REPO" \
+        bash --noprofile --norc -c 'source "$TER_SOURCE/user/ter_cmd.sh"; ter sync --yes >/dev/null 2>&1'; then
+        fail "concurrent sync lock"
+        rm -rf "$test_home"
+        return
+    fi
+
+    echo "  [ ok ] atomic sync paths"
+    rm -rf "$test_home"
+}
+
+check_codext_scope() {
+    local test_home
+    # shellcheck disable=SC1090
+    source "$REPO/user/codex-network-fix.sh"
+    test_home=$(mktemp -d "${TMPDIR:-/tmp}/ter-codext.XXXXXX") || { fail "could not create codext test directory"; return; }
+    printf '%s\n' 'Port 8888' > "$test_home/tinyproxy.conf"
+    printf '%s\n' '#!/bin/sh' 'exit 0' > "$test_home/codex"
+    chmod +x "$test_home/codex"
+
+    if (
+        curl() { printf '%s\n' '<title>Stats [tinyproxy]</title>'; }
+        _codext_proxy_ready 8888
+    ) && ! (
+        curl() { printf '%s\n' 'unrelated service'; }
+        _codext_proxy_ready 8888
+    ); then
+        echo "  [ ok ] codext listener ownership"
+    else
+        fail "codext listener ownership"
+    fi
+
+    if CODEXT_TINYPROXY_CONFIG="$test_home/tinyproxy.conf" CODEXT_BIN="$test_home/codex" TER_SOURCE="$REPO" \
+        bash --noprofile --norc -c '
+            before_http=${HTTP_PROXY-__unset__}
+            before_ssl=${SSL_CERT_FILE-__unset__}
+            source "$TER_SOURCE/user/codex-network-fix.sh"
+            tinyproxy() { return 0; }
+            _codext_proxy_ready() { return 0; }
+            codext || exit 1
+            [ "${HTTP_PROXY-__unset__}" = "$before_http" ] &&
+                [ "${SSL_CERT_FILE-__unset__}" = "$before_ssl" ]
+        '; then
+        echo "  [ ok ] codext environment scope"
+    else
+        fail "codext environment scope"
+    fi
+    rm -rf "$test_home"
 }
 
 echo "TER smoke test — $REPO"
 check_syntax
 check_isolated_install
+check_package_failure
+check_adb_validation
+check_sync_paths
+check_codext_scope
 # zsh doesn't support --noprofile; use -f instead.
 run_in bash "bash"
 if command -v zsh >/dev/null 2>&1; then
+    zsh_rc=0
     zsh -f -c '
+        smoke_failed=0
         for dir in core network user; do
             for f in '"$REPO"'/$dir/*.sh; do
                 [ -f "$f" ] || continue
-                source "$f" 2>/dev/null || echo "SOURCE_FAIL:$f"
+                source "$f" 2>/dev/null || { echo "SOURCE_FAIL:$f"; smoke_failed=1; }
             done
         done
         for cmd in '"$EXPECT"'; do
-            type "$cmd" >/dev/null 2>&1 || echo "MISSING:$cmd"
+            type "$cmd" >/dev/null 2>&1 || { echo "MISSING:$cmd"; smoke_failed=1; }
         done
-    ' > ${TMPDIR:-/tmp}/ter-smoke.$$ 2>&1 || true
-    if grep -q "^SOURCE_FAIL\|^MISSING" ${TMPDIR:-/tmp}/ter-smoke.$$; then
+        [ "$smoke_failed" -eq 0 ] || exit 1
+        echo SMOKE_COMPLETE
+    ' > "$SMOKE_OUTPUT" 2>&1 || zsh_rc=$?
+    if [ "$zsh_rc" -ne 0 ] || ! grep -q '^SMOKE_COMPLETE$' "$SMOKE_OUTPUT" \
+        || grep -q "^SOURCE_FAIL\|^MISSING" "$SMOKE_OUTPUT"; then
         echo "  [FAIL] zsh:"
-        sed 's/^/    /' ${TMPDIR:-/tmp}/ter-smoke.$$
+        sed 's/^/    /' "$SMOKE_OUTPUT"
         FAIL=$((FAIL+1))
     else
         echo "  [ ok ] zsh"
     fi
-    rm -f ${TMPDIR:-/tmp}/ter-smoke.$$
+    : > "$SMOKE_OUTPUT"
 else
     echo "  [skip] zsh not installed"
 fi

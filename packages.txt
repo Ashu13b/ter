@@ -28,6 +28,7 @@ net-tools           # netstat (fallback)
 curl
 wget
 termux-am-socket    # required by termux-* commands
+tinyproxy           # local proxy used by the codext launcher
 
 # ── JSON / data ──
 jq

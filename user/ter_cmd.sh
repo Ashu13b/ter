@@ -92,21 +92,16 @@ ter() {
         cat > "$conf" << 'EOF'
 TMUX_AUTOSTART=true
 WELCOME_DASHBOARD=true
-OPTIMIZE_STATUS=true
+OPTIMIZE_STATUS=false
 EOF
     fi
-    local key value extra
-    TMUX_AUTOSTART=true
-    WELCOME_DASHBOARD=true
-    OPTIMIZE_STATUS=true
-    while IFS='=' read -r key value extra; do
-        [ -z "${extra:-}" ] || continue
-        case "$key:$value" in
-            TMUX_AUTOSTART:true|TMUX_AUTOSTART:false) TMUX_AUTOSTART="$value" ;;
-            WELCOME_DASHBOARD:true|WELCOME_DASHBOARD:false) WELCOME_DASHBOARD="$value" ;;
-            OPTIMIZE_STATUS:true|OPTIMIZE_STATUS:false) OPTIMIZE_STATUS="$value" ;;
-        esac
-    done < "$conf"
+    if type _ter_load_startup_config >/dev/null 2>&1; then
+        _ter_load_startup_config
+    else
+        TMUX_AUTOSTART=true
+        WELCOME_DASHBOARD=true
+        OPTIMIZE_STATUS=false
+    fi
 
     # Help screen
     if [ "$1" = "-h" ] || [ "$1" = "--help" ] || [ "$1" = "help" ]; then
@@ -243,54 +238,129 @@ EOF
         local live="$HOME/.shell.d"
         local count=0 apply=0
         [ "${2:-}" = "--yes" ] || [ "${2:-}" = "-y" ] && apply=1
-        
+
         echo -e "\n\033[1;36m  🔄 TER Sync — runtime → repo\033[0m"
-        local pending_sync=()
-        local pending_types=()
+        local pending_from=()
 
         for dir in core network user docs; do
             [ -d "$live/$dir" ] || continue
-            while IFS= read -r f; do
+            while IFS= read -r -d "" f; do
                 rel="${f#$live/$dir/}"
                 _ter_is_ignored "$dir/$rel" && continue
                 src="$repo/$dir/$rel"
                 if [ ! -e "$src" ]; then
-                    pending_sync+=("$f:$src:$dir/$rel")
-                    pending_types+=("new")
+                    pending_from+=("$f")
                     echo "  [new script]  $dir/$rel"
                     count=$((count+1))
                 elif ! cmp -s "$f" "$src"; then
-                    pending_sync+=("$f:$src:$dir/$rel")
-                    pending_types+=("update")
+                    pending_from+=("$f")
                     echo "  [updated]     $dir/$rel"
                     count=$((count+1))
                 fi
-            done < <(find "$live/$dir" -type f 2>/dev/null)
+            done < <(find "$live/$dir" -type f -print0 2>/dev/null)
         done
 
         if [ "$count" -eq 0 ]; then
             echo -e "  \033[1;32m✓ Everything in sync! No unignored custom scripts found.\033[0m\n"
-            return
+            return 0
         fi
 
         if [ "$apply" -eq 0 ]; then
             echo ""
+            local confirm=""
             read -p "  Sync these $count file(s) into your ~/ter git repo? [y/N]: " confirm
             case "$confirm" in
                 y|Y|yes|YES) apply=1 ;;
-                *) echo -e "  \033[1;33mSync cancelled. No repo files changed.\033[0m\n"; return ;;
+                *) echo -e "  \033[1;33mSync cancelled. No repo files changed.\033[0m\n"; return 0 ;;
             esac
         fi
 
-        local item f src rel type
-        for item in "${pending_sync[@]}"; do
-            IFS=':' read -r f src rel <<< "$item"
-            mkdir -p "$(dirname "$src")"
-            cp "$f" "$src"
-            echo "  ✓ copied  $rel -> $src"
-        done
-        echo -e "  \033[1;32m✓ $count file(s) synced to $repo.\033[0m\n"
-        return
+        local sync_lock="$HOME/.config/ter/sync.lock"
+        local lock_pid="" owner_pid
+        owner_pid=$(sh -c 'printf "%s\n" "$PPID"')
+        if ! mkdir "$sync_lock" 2>/dev/null; then
+            lock_pid=$(cat "$sync_lock/pid" 2>/dev/null || true)
+            if [[ "$lock_pid" =~ ^[0-9]+$ ]] && [ "$lock_pid" != "$owner_pid" ] \
+                && kill -0 "$lock_pid" 2>/dev/null; then
+                echo "  Another ter sync is running (pid $lock_pid)." >&2
+                return 1
+            fi
+            rm -f "$sync_lock/pid"
+            if ! rmdir "$sync_lock" 2>/dev/null || ! mkdir "$sync_lock"; then
+                echo "  Cannot acquire sync lock: $sync_lock" >&2
+                return 1
+            fi
+        fi
+        printf '%s\n' "$owner_pid" > "$sync_lock/pid"
+
+        # Isolate traps from the interactive shell. EXIT cleanup also releases
+        # the lock after Ctrl-C, termination, or an unexpected copy failure.
+        (
+            _ter_sync_cleanup() {
+                if [ "$(cat "$sync_lock/pid" 2>/dev/null || true)" = "$owner_pid" ]; then
+                    rm -f "$sync_lock/pid"
+                    rmdir "$sync_lock" 2>/dev/null || true
+                fi
+            }
+            trap _ter_sync_cleanup EXIT
+            trap 'exit 129' HUP
+            trap 'exit 130' INT
+            trap 'exit 143' TERM
+
+            local f src rel dest_dir dest_real expected_dir repo_real tmp failures=0
+            repo_real=$(cd -P "$repo" 2>/dev/null && pwd) || {
+                echo "  Cannot resolve repository root: $repo" >&2
+                exit 1
+            }
+            for f in "${pending_from[@]}"; do
+                rel="${f#$live/}"
+                src="$repo/$rel"
+                dest_dir=$(dirname "$src")
+
+                if [ -L "$src" ]; then
+                    echo "  ✗ refused symlink target  $rel" >&2
+                    failures=$((failures+1))
+                    continue
+                fi
+                if ! mkdir -p "$dest_dir"; then
+                    echo "  ✗ cannot create target directory  $dest_dir" >&2
+                    failures=$((failures+1))
+                    continue
+                fi
+                dest_real=$(cd -P "$dest_dir" 2>/dev/null && pwd) || dest_real=""
+                expected_dir="$repo_real/${rel%/*}"
+                if [ "$dest_real" != "$expected_dir" ]; then
+                    echo "  ✗ refused symlinked target directory  $rel" >&2
+                    failures=$((failures+1))
+                    continue
+                fi
+                src="$dest_real/${rel##*/}"
+                if [ -L "$src" ]; then
+                    echo "  ✗ refused symlink target  $rel" >&2
+                    failures=$((failures+1))
+                    continue
+                fi
+                tmp=$(mktemp "$dest_real/.ter-sync.XXXXXX") || {
+                    echo "  ✗ cannot stage  $rel" >&2
+                    failures=$((failures+1))
+                    continue
+                }
+                if cp -p "$f" "$tmp" && mv -f "$tmp" "$src"; then
+                    echo "  ✓ copied  $rel -> $src"
+                else
+                    rm -f "$tmp"
+                    echo "  ✗ failed  $rel" >&2
+                    failures=$((failures+1))
+                fi
+            done
+
+            if [ "$failures" -gt 0 ]; then
+                echo -e "  \033[1;31m✗ $failures of $count file(s) failed; successful files remain synced.\033[0m\n" >&2
+                exit 1
+            fi
+            echo -e "  \033[1;32m✓ $count file(s) synced with atomic file replacement to $repo.\033[0m\n"
+        )
+        return $?
     fi
 
     # Diagnostic snapshot of the current device.

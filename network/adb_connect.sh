@@ -12,53 +12,90 @@ _adbcon_valid_port() {
     [[ "$1" =~ ^[0-9]{1,5}$ ]] && (( 10#$1 >= 1 && 10#$1 <= 65535 ))
 }
 
+_adbcon_valid_pair_code() {
+    [[ "$1" =~ ^[0-9]{6}$ ]]
+}
+
+_adbcon_timed() {
+    local seconds="${ADBCON_TIMEOUT_SECONDS:-20}"
+    if ! [[ "$seconds" =~ ^[0-9]{1,2}$ ]] || (( 10#$seconds < 1 || 10#$seconds > 60 )); then
+        seconds=20
+    fi
+    timeout "$seconds" adb "$@"
+}
+
+_adbcon_pair_succeeded() {
+    local exit_code="$1" output="$2"
+    [ "$exit_code" -eq 0 ] || return 1
+    printf '%s\n' "$output" | grep -Eqi '(^|[[:space:]])successfully paired([[:space:]]|$)|pairing successful'
+}
+
 adbcon() {
     local LOCAL_LOOPBACK="127.0.0.1:5555"
     local scan_ports=0
-    [ "${1:-}" = "--scan" ] && scan_ports=1
+    local wizard_choice="" input_ip="" pair_port="" pair_code=""
+
+    case "${1:-}" in
+        -h|--help)
+            echo "========================================"
+            echo "    ADB CONNECTION MODULE GUIDE         "
+            echo "========================================"
+            echo "Usage: adbcon [option]"
+            echo ""
+            echo "Options:"
+            echo "  adbcon                     Launch ADB connection wizard (manual port entry)"
+            echo "  adbcon --scan              Scan for an already-paired wireless ADB port"
+            echo "  adbcon -d, --exit          Disconnect and kill the active ADB server"
+            echo "  adbcon -h, --help          Show this connection help manual"
+            echo "========================================"
+            return 0
+            ;;
+        --scan) scan_ports=1 ;;
+        -d|--exit|disconnect) ;;
+        "") ;;
+        *)
+            echo "Unknown adbcon option: $1" >&2
+            echo "Run 'adbcon --help' for usage." >&2
+            return 2
+            ;;
+    esac
 
     if ! command -v adb >/dev/null 2>&1; then
         echo "adbcon requires android-tools (run: pkg install android-tools)."
         return 127
     fi
-
-    if [[ "$1" == "-d" ]] || [[ "$1" == "--exit" ]] || [[ "$1" == "disconnect" ]]; then
-        echo -e "\e[1;34m[ ADB DISCONNECT ]\e[0m"
-        adb disconnect > /dev/null 2>&1
-        adb kill-server > /dev/null 2>&1
-        echo "✨ ADB is completely offline."
-        return 0
+    if ! command -v timeout >/dev/null 2>&1; then
+        echo "adbcon requires timeout from coreutils (run: pkg install coreutils)."
+        return 127
     fi
 
-    if [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
-        echo "========================================"
-        echo "    ADB CONNECTION MODULE GUIDE         "
-        echo "========================================"
-        echo "Usage: adbcon [option]"
-        echo ""
-        echo "Options:"
-        echo "  adbcon                     Launch ADB connection wizard (manual port entry)"
-        echo "  adbcon --scan              Scan for an already-paired wireless ADB port"
-        echo "  adbcon -d, --exit          Disconnect and kill the active ADB server"
-        echo "  adbcon -h, --help          Show this connection help manual"
-        echo "========================================"
-        return 0
-    fi
+    case "${1:-}" in
+        -d|--exit|disconnect)
+            echo -e "\e[1;34m[ ADB DISCONNECT ]\e[0m"
+            _adbcon_timed disconnect >/dev/null 2>&1 || true
+            if ! _adbcon_timed kill-server >/dev/null 2>&1; then
+                echo "ADB server could not be stopped; it may still be running." >&2
+                return 1
+            fi
+            echo "✨ ADB is completely offline."
+            return 0
+            ;;
+    esac
 
     echo -e "\n\e[1;36m══ TERMUX SMART ADB WIZARD ══\e[0m\n"
 
     # 1. Fast check for existing loopback
-    adb connect $LOCAL_LOOPBACK > /dev/null 2>&1
+    _adbcon_timed connect "$LOCAL_LOOPBACK" >/dev/null 2>&1 || true
     sleep 0.5
-    if adb devices | grep -q "${LOCAL_LOOPBACK}[[:space:]]*device"; then
+    if _adbcon_timed devices | grep -q "${LOCAL_LOOPBACK}[[:space:]]*device"; then
         echo -e "🎉 \e[1;32mConnection is alive and locked in background!\e[0m"
         echo -e "Dropping into shell...\n"
         adb -s "$LOCAL_LOOPBACK" shell
-        return 0
+        return $?
     fi
 
     # Clean up stale loopback entry so it doesn't interfere
-    adb disconnect $LOCAL_LOOPBACK > /dev/null 2>&1
+    _adbcon_timed disconnect "$LOCAL_LOOPBACK" >/dev/null 2>&1 || true
 
     echo -e "⚠️  \e[33mBackground channel offline (Phone rebooted or ADB killed)\e[0m"
     echo -e "   \e[90mRecovery ladder if this was a \`dvop off\`:\e[0m"
@@ -126,7 +163,7 @@ adbcon() {
     local ports=""
     if [ "$scan_ports" -eq 1 ]; then
         echo -e "🔍 \e[1;36mScanning for an already-paired Wireless Debugging port...\e[0m"
-        ports=$(python3 -c '
+        if ! ports=$(timeout 30 python3 -c '
 import socket, sys, concurrent.futures
 ip = sys.argv[1]
 def scan(p):
@@ -140,6 +177,10 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=250) as e:
     for r in results:
         if r: print(r)
 ' "$IP" 2>/dev/null)
+        then
+            echo "Wireless ADB port scan failed or timed out after 30 seconds." >&2
+            return 1
+        fi
     else
         echo "Skipping port scan. Use 'adbcon --scan' to search for an already-paired port."
     fi
@@ -149,10 +190,10 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=250) as e:
     local pairing_revoked=0
     for port in $ports; do
         echo -e "🔌 Found port \e[1;33m$port\e[0m. Testing connection..."
-        adb connect "$IP:$port" > /dev/null 2>&1
+        _adbcon_timed connect "$IP:$port" >/dev/null 2>&1 || true
         sleep 0.5
         local dev_line
-        dev_line=$(adb devices | grep "${IP}:${port}")
+        dev_line=$(_adbcon_timed devices | grep -F "$IP:$port")
         if echo "$dev_line" | grep -q "device$"; then
             auto_connected=1
             current_port=$port
@@ -160,11 +201,11 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=250) as e:
         elif echo "$dev_line" | grep -q "unauthorized"; then
             # Pairing revoked/expired — retrying other ports on the same phone won't help.
             echo -e "🔒 \e[1;33mPort $port is open but the pairing is no longer trusted.\e[0m"
-            adb disconnect "$IP:$port" > /dev/null 2>&1
+            _adbcon_timed disconnect "$IP:$port" >/dev/null 2>&1 || true
             pairing_revoked=1
             break
         else
-            adb disconnect "$IP:$port" > /dev/null 2>&1
+            _adbcon_timed disconnect "$IP:$port" >/dev/null 2>&1 || true
         fi
     done
 
@@ -182,9 +223,13 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=250) as e:
         echo -ne "👉 \e[1;36mChoose 1, 2, or 3 (press Enter for 1): \e[0m"
         read auto_choice
         auto_choice=${auto_choice:-1}
+        if ! [[ "$auto_choice" =~ ^[123]$ ]]; then
+            echo "Choose 1, 2, or 3." >&2
+            return 1
+        fi
 
         if [[ "$auto_choice" == "2" ]] || [[ "$auto_choice" == "3" ]]; then
-            adb disconnect "$IP:$current_port" > /dev/null 2>&1
+            _adbcon_timed disconnect "$IP:$current_port" >/dev/null 2>&1 || true
             auto_connected=0
             if [[ "$auto_choice" == "2" ]]; then
                 wizard_choice="2"
@@ -205,6 +250,10 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=250) as e:
             echo -ne "👉 \e[1;36mChoose 1 or 2 (press Enter for 2): \e[0m"
             read wizard_choice
             wizard_choice=${wizard_choice:-2}
+            if ! [[ "$wizard_choice" =~ ^[12]$ ]]; then
+                echo "Choose 1 or 2." >&2
+                return 1
+            fi
             echo ""
         fi
 
@@ -229,31 +278,37 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=250) as e:
                 echo "Invalid pairing port: $pair_port"
                 return 1
             fi
+            if ! _adbcon_valid_pair_code "$pair_code"; then
+                echo "Pairing code must contain exactly 6 digits."
+                return 1
+            fi
 
             echo -e "\nPairing with $IP:$pair_port..."
 
             # Kill stale server to prevent 'protocol fault' errors
-            adb kill-server > /dev/null 2>&1
+            _adbcon_timed kill-server > /dev/null 2>&1
             sleep 0.5
-            adb start-server > /dev/null 2>&1
+            _adbcon_timed start-server > /dev/null 2>&1
 
-            local pair_result
-            pair_result=$(adb pair "$IP:$pair_port" "$pair_code" 2>&1)
+            local pair_result pair_status
+            pair_result=$(_adbcon_timed pair "$IP:$pair_port" "$pair_code" 2>&1)
+            pair_status=$?
 
-            if echo "$pair_result" | grep -qi "success\|paired"; then
+            if _adbcon_pair_succeeded "$pair_status" "$pair_result"; then
                 echo -e "\e[1;32m✓ Pairing complete! Now we need to connect.\e[0m\n"
             else
                 echo -e "\e[1;33m⚠️  First attempt failed, retrying with fresh server...\e[0m"
-                adb kill-server > /dev/null 2>&1
+                _adbcon_timed kill-server > /dev/null 2>&1
                 sleep 1
-                adb start-server > /dev/null 2>&1
+                _adbcon_timed start-server > /dev/null 2>&1
                 sleep 0.5
-                pair_result=$(adb pair "$IP:$pair_port" "$pair_code" 2>&1)
+                pair_result=$(_adbcon_timed pair "$IP:$pair_port" "$pair_code" 2>&1)
+                pair_status=$?
 
-                if echo "$pair_result" | grep -qi "success\|paired"; then
+                if _adbcon_pair_succeeded "$pair_status" "$pair_result"; then
                     echo -e "\e[1;32m✓ Pairing complete! Now we need to connect.\e[0m\n"
                 else
-                    echo -e "\e[1;31m❌ Pairing failed: $pair_result\e[0m"
+                    echo -e "\e[1;31m❌ Pairing failed: ${pair_result:-ADB returned no error details.}\e[0m"
                     echo -e "Make sure the pairing popup is still open (it expires quickly)."
                     return 1
                 fi
@@ -276,21 +331,21 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=250) as e:
         fi
 
         echo -e "Connecting to $IP:$current_port..."
-        adb connect "$IP:$current_port" 2>&1
+        _adbcon_timed connect "$IP:$current_port" 2>&1
 
         # Give ADB time to complete the TCP handshake
         local connect_ok=0
         for i in {1..3}; do
             sleep 1
             local dev_line
-            dev_line=$(adb devices | grep "${IP}:${current_port}")
+            dev_line=$(_adbcon_timed devices | grep "${IP}:${current_port}")
             if echo "$dev_line" | grep -q "device$"; then
                 connect_ok=1
                 break
             elif echo "$dev_line" | grep -q "unauthorized"; then
                 echo -e "\e[1;33m🔒 Connected but unauthorized — pairing was revoked or the phone doesn't recognise this Termux.\e[0m"
                 echo -e "   Re-run \`adbcon\` and pick fresh-pair mode."
-                adb disconnect "$IP:$current_port" > /dev/null 2>&1
+                _adbcon_timed disconnect "$IP:$current_port" > /dev/null 2>&1
                 return 1
             fi
             echo "Waiting for device to come online (attempt $i/3)..."
@@ -298,8 +353,8 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=250) as e:
 
         if [ $connect_ok -eq 0 ]; then
             # One final reconnect attempt in case the first was a stale server
-            adb disconnect "$IP:$current_port" > /dev/null 2>&1
-            adb connect "$IP:$current_port" > /dev/null 2>&1
+            _adbcon_timed disconnect "$IP:$current_port" > /dev/null 2>&1
+            _adbcon_timed connect "$IP:$current_port" > /dev/null 2>&1
             sleep 1.5
         fi
     fi
@@ -307,10 +362,10 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=250) as e:
 
 
 
-    if adb devices | grep -q "${IP}:${current_port}[[:space:]]*device"; then
+    if _adbcon_timed devices | grep -q "${IP}:${current_port}[[:space:]]*device"; then
         echo -e "\n🎉 \e[1;32mConnection successful!\e[0m"
         echo -e "🔄 \e[1;36mLocking into offline loopback mode (port 5555)...\e[0m"
-        adb tcpip 5555 > /dev/null 2>&1
+        _adbcon_timed tcpip 5555 > /dev/null 2>&1
 
         # adbd restarts after tcpip — wait for it to come back
         sleep 2
@@ -318,30 +373,33 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=250) as e:
         local loopback_success=0
         for i in {1..5}; do
             echo "Attempting to connect to loopback channel (try $i/5)..."
-            adb connect $LOCAL_LOOPBACK > /dev/null 2>&1
+            _adbcon_timed connect $LOCAL_LOOPBACK > /dev/null 2>&1
             sleep 1.5
-            if adb devices | grep -q "${LOCAL_LOOPBACK}[[:space:]]*device"; then
+            if _adbcon_timed devices | grep -q "${LOCAL_LOOPBACK}[[:space:]]*device"; then
                 loopback_success=1
                 break
             fi
         done
 
         if [ $loopback_success -eq 1 ]; then
-            adb disconnect "$IP:$current_port" > /dev/null 2>&1
+            _adbcon_timed disconnect "$IP:$current_port" > /dev/null 2>&1
             # Wait for device to be fully ready (not just listed)
             echo "Waiting for device to be ready..."
-            adb -s "$LOCAL_LOOPBACK" wait-for-device 2>/dev/null
+            _adbcon_timed -s "$LOCAL_LOOPBACK" wait-for-device 2>/dev/null
             sleep 1
             echo -e "🚀 \e[1;32mEverything set up! Dropping into loopback shell...\e[0m\n"
             adb -s "$LOCAL_LOOPBACK" shell
+            return $?
         else
             echo -e "⚠️  \e[33mFailed to lock loopback channel (port 5555).\e[0m"
             echo -e "🚀 \e[1;32mFalling back to active Wi-Fi channel. Dropping into shell...\e[0m\n"
-            adb -s "$IP:$current_port" wait-for-device 2>/dev/null
+            _adbcon_timed -s "$IP:$current_port" wait-for-device 2>/dev/null
             adb -s "$IP:$current_port" shell
+            return $?
         fi
     else
         echo -e "\e[1;31m❌ Connection failed.\e[0m"
         echo "Make sure the Port exactly matches the 'IP address & Port' section."
+        return 1
     fi
 }

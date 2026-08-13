@@ -74,9 +74,9 @@ All modular scripts are automatically sourced on terminal startup. They are orga
 ## 🛡️ Automated Backups (`~/.config/ter/backups/`)
 
 TER features an automated rolling backup engine built into `install.sh`:
-* **Location:** [`~/.config/ter/backups/backup_YYYYMMDD_HHMMSS/`](file:///data/data/com.termux/files/home/.config/ter/backups/)
+* **Location:** `~/.config/ter/backups/backup_YYYYMMDD_HHMMSS_<suffix>/`
 * **Contents:** Full timestamped snapshots of `~/.shell.d/` modules, user scripts, and `~/.config/ter/` configurations before any installer deployment.
-* **Retention Policy:** Automatically purges older snapshots, retaining the **10 most recent backups**.
+* **Retention Policy:** Automatically purges older snapshots, retaining the **4 most recent backups**.
 * **Preservation:** Custom untracked user scripts in `~/.shell.d/` are preserved during module deployments.
 
 ---

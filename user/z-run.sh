@@ -1,20 +1,15 @@
 # ── Shell Startup Execution ──
-# Runs background stability status on interactive startup.
+# Optionally runs the ADB-backed stability status on interactive startup.
+# Disabled by default because device/network timeouts must never delay a prompt.
 # Guarded so re-sourcing (.bashrc + .zshrc + tmux auto-start) doesn't
 # print the status banner multiple times.
 
 if [ -t 1 ] && [ -z "$TER_STATUS_PRINTED" ]; then
     export TER_STATUS_PRINTED=1
-    if [ -f "$HOME/.config/ter/startup.conf" ]; then
-        source "$HOME/.config/ter/startup.conf"
-    fi
+    type _ter_load_startup_config >/dev/null 2>&1 && _ter_load_startup_config
     if [ "$OPTIMIZE_STATUS" != "false" ]; then
         optimize status
     fi
-    # Passive health probe — silent on clean state, one line per warning.
-    # Every new terminal doubles as a health check. Disable via
-    # DOCTOR_QUIET=false in ~/.config/ter/startup.conf.
-    if [ "$DOCTOR_QUIET" != "false" ] && command -v ter >/dev/null 2>&1; then
-        ter doctor --quiet 2>/dev/null
-    fi
+    # Repository drift checks can traverse thousands of files and block a new
+    # prompt for seconds. Keep them explicit via `ter doctor`.
 fi
