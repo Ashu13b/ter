@@ -324,6 +324,80 @@ check_codext_scope() {
     rm -rf "$test_home"
 }
 
+check_tab_title() {
+    local test_home
+    # shellcheck disable=SC1090
+    source "$REPO/user/tab_title.sh"
+    test_home=$(mktemp -d "${TMPDIR:-/tmp}/ter-title.XXXXXX") || { fail "could not create tab_title test directory"; return; }
+
+    # Test title control-character sanitization
+    local raw_title expected_title
+    raw_title=$(
+        unset TMUX
+        _ter_set_title "$(printf 'evil\007\033]2;pwn\007')"
+    )
+    expected_title=$(printf '\033]0;evil]2;pwn\007')
+    if [ "$raw_title" != "$expected_title" ]; then
+        fail "tab_title control character sanitization"
+        rm -rf "$test_home"
+        return
+    fi
+
+    # Test preexec command formatting
+    local captured=""
+    _ter_set_title() { captured="$1"; }
+    _ter_where() { echo "phone"; }
+    _ter_short_pwd() { echo "ter"; }
+
+    _ter_preexec_title "   adb devices"
+    if [ "$captured" != "📱 adb:devices / ter" ]; then
+        fail "tab_title adb single subcommand parsing"
+        rm -rf "$test_home"
+        return
+    fi
+
+    _ter_preexec_title "adb -s 192.168.1.5:5555 shell"
+    if [ "$captured" != "📱 adb:shell / ter" ]; then
+        fail "tab_title adb options parsing"
+        rm -rf "$test_home"
+        return
+    fi
+
+    _ter_preexec_title "ssh -p 2222 user@oracle-server.internal"
+    if [ "$captured" != "☁️ oracle-server" ]; then
+        fail "tab_title ssh hostname parsing"
+        rm -rf "$test_home"
+        return
+    fi
+
+    _ter_preexec_title "vim -u NONE /tmp/test.txt"
+    if [ "$captured" != "📱 vim / test.txt" ]; then
+        fail "tab_title editor flag parsing"
+        rm -rf "$test_home"
+        return
+    fi
+
+    _ter_preexec_title "FOO=1 bar=2 claude"
+    if [ "$captured" != "📱 claude / ter" ]; then
+        fail "tab_title env prefix parsing"
+        rm -rf "$test_home"
+        return
+    fi
+
+    # Test PS1 escape cleanup
+    local sample_ps1 cleaned_ps1
+    sample_ps1='\[\e]0;\u@\h: \w\a\]\[\033[01;32m\]\u@\h\[\033[00m\]:\w\$ '
+    cleaned_ps1=$(printf '%s' "$sample_ps1" | sed -E 's/(\\\[)?(\\[eE]|\\033)\]0;(\\.|[^\\])*\\[aA](\\\])?//g')
+    if [ "$cleaned_ps1" != '\[\033[01;32m\]\u@\h\[\033[00m\]:\w\$ ' ]; then
+        fail "tab_title PS1 title stripping"
+        rm -rf "$test_home"
+        return
+    fi
+
+    echo "  [ ok ] tab_title behavioral validation"
+    rm -rf "$test_home"
+}
+
 echo "TER smoke test — $REPO"
 check_syntax
 check_isolated_install
@@ -331,6 +405,7 @@ check_package_failure
 check_adb_validation
 check_sync_paths
 check_codext_scope
+check_tab_title
 # zsh doesn't support --noprofile; use -f instead.
 run_in bash "bash"
 if command -v zsh >/dev/null 2>&1; then

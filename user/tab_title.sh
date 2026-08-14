@@ -1,36 +1,25 @@
 #!/bin/bash
 
-# ── Dynamic Session Tab Naming ──
-# Renames the Termux session tab shown in the drawer/side-panel.
+# ── Dynamic Session Tab Naming (Single Source of Truth) ──
+# Renames the terminal / Termux session tab shown in the drawer and window title.
+# Structure: [1. WHERE (Icon only)] + [2. WHO/HIJACKER (Agent/Tool)] + [3. FOLDER]
 
 export DISABLE_AUTO_TITLE="true"
 
+# ── Title Output Helper ──
 _ter_set_title() {
     local title="$1"
-    if [ -n "$TMUX" ]; then
-        tmux rename-window "${title}" 2>/dev/null || true
+    # Strip ASCII control characters to prevent escape injection
+    local clean_title
+    clean_title=$(printf '%s' "$title" | tr -d '\000-\037\177')
+    if [ -n "${TMUX:-}" ]; then
+        tmux rename-window "${clean_title}" 2>/dev/null || true
     else
-        if [ -n "$ZSH_VERSION" ]; then
-            (
-                sleep 0.1
-                printf "\e]0;%s\a" "${title}"
-            ) < /dev/null 2>/dev/null &!
-        else
-            (
-                sleep 0.1
-                printf "\e]0;%s\a" "${title}"
-            ) < /dev/null 2>/dev/null &
-            disown $! 2>/dev/null || true
-        fi
+        printf '\033]0;%s\007' "${clean_title}"
     fi
 }
 
-_ter_get_folder() {
-    local folder; folder=$(basename "$PWD")
-    [ "$folder" = "files" ] && folder="home"
-    echo "${folder}/"
-}
-
+# ── Manual Override ──
 tabname() {
     if [ -n "$*" ]; then
         export MANUAL_TAB_NAME="$*"
@@ -40,102 +29,261 @@ tabname() {
     _ter_precmd_title
 }
 
+# ── Environment & Host Icon Resolver ──
+_ter_icon_for_env() {
+    local target="$1"
+    local target_lower
+    target_lower=$(printf '%s' "$target" | tr '[:upper:]' '[:lower:]')
+
+    case "$target_lower" in
+        *oracle*|*ubu*|*cld*|*cloud*|*vps*|*aws*|*gcp*|*oci*|*server*)
+            echo "☁️"
+            ;;
+        *laptop*|*pc*|*desktop*|*mac*|*book*|*thinkpad*|*workstation*)
+            echo "💻"
+            ;;
+        *tablet*|*tab*|*pad*)
+            echo "📱"
+            ;;
+        phone|termux|local|android)
+            echo "📱"
+            ;;
+        ssh*)
+            local host="${target_lower#ssh:}"
+            case "$host" in
+                *oracle*|*ubu*|*cld*|*cloud*|*vps*|*aws*|*gcp*|*oci*|*server*)
+                    echo "☁️"
+                    ;;
+                *laptop*|*pc*|*desktop*|*mac*|*book*|*thinkpad*|*workstation*)
+                    echo "💻"
+                    ;;
+                *tablet*|*tab*|*pad*)
+                    echo "📱"
+                    ;;
+                *)
+                    echo "☁️"
+                    ;;
+            esac
+            ;;
+        *)
+            if [ "$(uname -o 2>/dev/null)" = "Android" ] || [ -n "${TERMUX_VERSION:-}" ]; then
+                echo "📱"
+            else
+                echo "💻"
+            fi
+            ;;
+    esac
+}
+
+# ── Host / Node Identity ──
 _ter_where() {
-    # Identify the shell environment: local termux, ssh-into-remote, or unknown.
-    if [ -n "$SSH_CONNECTION" ] || [ -n "$SSH_CLIENT" ]; then
-        echo "ssh:${HOSTNAME:-remote}"
-    elif [ "$(uname -o 2>/dev/null)" = "Android" ]; then
-        echo "termux"
+    if [ -n "${SSH_CONNECTION:-}" ] || [ -n "${SSH_CLIENT:-}" ]; then
+        local remote_h="${HOSTNAME:-}"
+        [ -z "$remote_h" ] && remote_h=$(hostname -s 2>/dev/null || uname -n 2>/dev/null || echo "remote")
+        remote_h="${remote_h%%.*}"
+        echo "ssh:${remote_h}"
+    elif [ "$(uname -o 2>/dev/null)" = "Android" ] || [ -n "${TERMUX_VERSION:-}" ]; then
+        echo "phone"
     else
-        echo "$(uname -s 2>/dev/null | tr '[:upper:]' '[:lower:]')"
+        local host_short
+        host_short="${HOSTNAME:-}"
+        [ -z "$host_short" ] && host_short=$(hostname -s 2>/dev/null || uname -s 2>/dev/null || echo "node")
+        host_short="${host_short%%.*}"
+        echo "${host_short:-node}"
     fi
 }
 
-_ter_precmd_title() {
-    if [ -n "$MANUAL_TAB_NAME" ]; then
-        _ter_set_title "$MANUAL_TAB_NAME"
-        return
-    fi
-    local prefix=""
-    [ -n "$NEXUS_SERVICE_NAME" ] && prefix="$NEXUS_SERVICE_NAME:"
-    # Idle: where / folder
-    _ter_set_title "${prefix}$(_ter_where) / $(_ter_short_pwd)"
-}
-
+# ── Current Folder Formatter ──
 _ter_short_pwd() {
-    # Show parent/child for context (e.g. "home/ter") without overflowing.
-    local cur; cur=$(basename "$PWD" 2>/dev/null)
-    local par; par=$(basename "$(dirname "$PWD")" 2>/dev/null)
-    [ "$cur" = "/" ] || [ -z "$cur" ] && cur="root"
+    local pwd_val="${PWD:-/}"
+    local cur="${pwd_val##*/}"
+    local par_dir="${pwd_val%/*}"
+    local par="${par_dir##*/}"
+    [ -z "$cur" ] && cur="root"
     [ "$cur" = "files" ] && cur="home"
     [ "$par" = "files" ] && par="home"
-    if [ -n "$par" ] && [ "$par" != "/" ] && [ "$par" != "." ]; then
+    if [ -n "$par" ] && [ "$par" != "home" ]; then
         echo "${par}/${cur}"
     else
         echo "$cur"
     fi
 }
 
+# ── Precmd Hook: Native Shell / Idle Prompt ──
+_ter_precmd_title() {
+    if [ -n "${MANUAL_TAB_NAME:-}" ]; then
+        _ter_set_title "$MANUAL_TAB_NAME"
+        return
+    fi
+
+    # Dynamically sanitize Ubuntu/Debian default PS1 title escapes
+    if [ -n "$BASH_VERSION" ]; then
+        if [[ "$PS1" == *"\\e]0;"* ]] || [[ "$PS1" == *"\\033]0;"* ]] || [[ "$PS1" == *$'\033]0;'* ]]; then
+            PS1="$(printf '%s' "$PS1" | sed -E 's/(\\\[)?(\\[eE]|\\033|\x1b)\]0;(\\.|[^\\])*\\[aA](\\\])?//g')"
+        fi
+    fi
+
+    local where; where=$(_ter_where)
+    local icon; icon=$(_ter_icon_for_env "$where")
+    local folder; folder=$(_ter_short_pwd)
+    local prefix=""
+
+    if [ -n "${NEXUS_SERVICE_NAME:-}" ]; then
+        prefix="${NEXUS_SERVICE_NAME}:"
+    fi
+
+    # Native Shell (Idle): [icon] [service:]folder
+    _ter_set_title "${icon} ${prefix}${folder}"
+}
+
+# ── Preexec Hook: Hijacked by Tool / Agent / Command ──
 _ter_preexec_title() {
-    if [ -n "$MANUAL_TAB_NAME" ]; then return; fi
+    if [ -n "${MANUAL_TAB_NAME:-}" ]; then return; fi
 
     local cmd="$1"
+    cmd="${cmd#"${cmd%%[![:space:]]*}"}"
+    [ -z "$cmd" ] && return
+
+    # Strip environment variable assignments prefix (e.g. FOO=bar cmd)
+    while case "$cmd" in [A-Za-z_]*=*) true ;; *) false ;; esac; do
+        cmd="${cmd#* }"
+        cmd="${cmd#"${cmd%%[![:space:]]*}"}"
+    done
+
+    # Strip privilege / environment wrappers
+    case "${cmd%% *}" in
+        sudo|doas|env)
+            cmd="${cmd#* }"
+            cmd="${cmd#"${cmd%%[![:space:]]*}"}"
+            ;;
+    esac
+    [ -z "$cmd" ] && return
+
     local cmd_name="${cmd%% *}"
     local cmd_arg="${cmd#* }"
     [ "$cmd_arg" = "$cmd" ] && cmd_arg=""
+    cmd_arg="${cmd_arg#"${cmd_arg%%[![:space:]]*}"}"
 
-    # `where` defaults to the local shell environment, but ssh-outbound
-    # overrides it so the title reflects the remote host being entered.
     local where; where=$(_ter_where)
-    local detail
-    case "$cmd_name" in
-        ssh|mosh)
-            # Pull host from "user@host" or "host" forms.
-            local target="${cmd_arg%% *}"
-            local host="${target##*@}"
-            where="ssh:${host:-remote}"
-            detail=""
-            ;;
-        scp|rsync)
-            where="ssh"
-            detail="${cmd_arg%% *}"
-            ;;
-        vim|nvim|nano|cat|less|bat|tail|head|code)
-            detail=$(basename "${cmd_arg%% *}" 2>/dev/null)
-            ;;
-        *)
-            detail=$(_ter_short_pwd)
-            ;;
-    esac
-    [ -z "$detail" ] && detail=$(_ter_short_pwd)
-
+    local icon; icon=$(_ter_icon_for_env "$where")
+    local folder; folder=$(_ter_short_pwd)
     local prefix=""
-    [ -n "$NEXUS_SERVICE_NAME" ] && prefix="$NEXUS_SERVICE_NAME:"
+    [ -n "${NEXUS_SERVICE_NAME:-}" ] && prefix="${NEXUS_SERVICE_NAME}:"
 
-    # Agent sessions use a compact, explicit label and only the current folder.
-    local suffix=""
-    local agent_session=0
     case "$cmd_name" in
-        claude|agy|ai|aichat|aider)
-            suffix=" (running agent)"
-            detail=$(_ter_get_folder)
-            agent_session=1
+        # Remote SSH Hijack
+        ssh|mosh)
+            local host=""
+            local skip_next=0
+            for token in $cmd_arg; do
+                if [ "$skip_next" -eq 1 ]; then
+                    skip_next=0
+                    continue
+                fi
+                case "$token" in
+                    -p|-i|-l|-c|-F|-o|-b|-e|-J|-L|-R|-D|-m|-O|-S|-w|-B|-E|-I)
+                        skip_next=1
+                        ;;
+                    -*)
+                        ;;
+                    *)
+                        host="${token##*@}"
+                        host="${host%%:*}"
+                        host="${host%%.*}"
+                        break
+                        ;;
+                esac
+            done
+            [ -z "$host" ] && host="remote"
+            icon=$(_ter_icon_for_env "$host")
+            _ter_set_title "${icon} ${host}"
+            return
+            ;;
+        # AI Coding Agents & LLM CLIs
+        agy|codex|claude|aider|gemini|aichat|ai|opendevin)
+            _ter_set_title "${icon} ${prefix}${cmd_name} / ${folder}"
+            return
+            ;;
+        # Android Debug Bridge / Device Tools
+        adb|fastboot|scrcpy)
+            local subcmd=""
+            local skip_next=0
+            for token in $cmd_arg; do
+                if [ "$skip_next" -eq 1 ]; then
+                    skip_next=0
+                    continue
+                fi
+                case "$token" in
+                    -s|-p|-H|-P|-L)
+                        skip_next=1
+                        ;;
+                    -*)
+                        ;;
+                    *)
+                        subcmd="$token"
+                        break
+                        ;;
+                esac
+            done
+            if [ -n "$subcmd" ]; then
+                _ter_set_title "${icon} ${cmd_name}:${subcmd} / ${folder}"
+            else
+                _ter_set_title "${icon} ${cmd_name} / ${folder}"
+            fi
+            return
+            ;;
+        # Editors & Interactive Tools
+        vim|nvim|nano|helix|code|htop|btop|top|python|python3|node|ipython)
+            local file_target=""
+            local skip_next=0
+            for token in $cmd_arg; do
+                if [ "$skip_next" -eq 1 ]; then
+                    skip_next=0
+                    continue
+                fi
+                case "$token" in
+                    -u|-c|-s|-w|-W|-i)
+                        skip_next=1
+                        ;;
+                    -*)
+                        ;;
+                    *)
+                        file_target="${token##*/}"
+                        break
+                        ;;
+                esac
+            done
+            [ -z "$file_target" ] && file_target="$folder"
+            _ter_set_title "${icon} ${cmd_name} / ${file_target}"
+            return
+            ;;
+        # NEXUS Workflows
+        nx)
+            local nx_sub="${cmd_arg%% *}"
+            if [ -n "$nx_sub" ]; then
+                _ter_set_title "⚡ nx:${nx_sub} / ${folder}"
+                return
+            fi
             ;;
     esac
 
-    # Active: cmd / where / detail
-    if [ "$agent_session" -eq 1 ]; then
-        _ter_set_title "${prefix}${cmd_name}${suffix} / ${detail}"
-    else
-        _ter_set_title "${prefix}${cmd_name} / ${where} / ${detail}${suffix}"
-    fi
+    # Generic Active Command: [icon] [cmd] / [folder]
+    _ter_set_title "${icon} ${cmd_name} / ${folder}"
 }
 
-if [ -n "$ZSH_VERSION" ]; then
+# ── Strip Ubuntu/Debian default PS1 title escapes ──
+if [ -n "$BASH_VERSION" ]; then
+    if [ -n "${PS1:-}" ]; then
+        if [[ "$PS1" == *"\\e]0;"* ]] || [[ "$PS1" == *"\\033]0;"* ]]; then
+            PS1="$(printf '%s' "$PS1" | sed -E 's/(\\\[)?(\\[eE]|\\033)\]0;(\\.|[^\\])*\\[aA](\\\])?//g')"
+        fi
+    fi
+    case ";${PROMPT_COMMAND:-};" in
+        *";_ter_precmd_title;"*|*"_ter_precmd_title;"*) ;;
+        *) PROMPT_COMMAND="_ter_precmd_title;${PROMPT_COMMAND:-}" ;;
+    esac
+elif [ -n "$ZSH_VERSION" ]; then
     autoload -Uz add-zsh-hook 2>/dev/null
     add-zsh-hook precmd _ter_precmd_title 2>/dev/null
     add-zsh-hook preexec _ter_preexec_title 2>/dev/null
-else
-    # Bash fallback
-    PROMPT_COMMAND="_ter_precmd_title; $PROMPT_COMMAND"
 fi
