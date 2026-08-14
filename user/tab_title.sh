@@ -112,16 +112,23 @@ _ter_preexec_title() {
     local prefix=""
     [ -n "$NEXUS_SERVICE_NAME" ] && prefix="$NEXUS_SERVICE_NAME:"
 
-    # Agent sessions get a PID suffix so multiple instances stay distinct.
+    # Agent sessions use a compact, explicit label and only the current folder.
     local suffix=""
+    local agent_session=0
     case "$cmd_name" in
         claude|agy|ai|aichat|aider)
-            suffix=" #$(printf '%03d' "$(( $$ % 1000 ))")"
+            suffix=" (running agent)"
+            detail=$(_ter_get_folder)
+            agent_session=1
             ;;
     esac
 
     # Active: cmd / where / detail
-    _ter_set_title "${prefix}${cmd_name} / ${where} / ${detail}${suffix}"
+    if [ "$agent_session" -eq 1 ]; then
+        _ter_set_title "${prefix}${cmd_name}${suffix} / ${detail}"
+    else
+        _ter_set_title "${prefix}${cmd_name} / ${where} / ${detail}${suffix}"
+    fi
 }
 
 if [ -n "$ZSH_VERSION" ]; then

@@ -379,8 +379,8 @@ fi
 LOADER_MARKER="SHELL.D Modular Loader"
 LOADER_BLOCK='
 # ── SHELL.D Modular Loader ──
-if [ -z "$TER_LOADED" ]; then
-    export TER_LOADED=1
+if [ "${TER_LOADED_PID:-}" != "$$" ]; then
+    TER_LOADED_PID=$$
     export PATH="$HOME/.local/bin:$PATH"
     if [ -r "$HOME/.shell.d/.ter-repo" ]; then
         IFS= read -r TER_REPO_DIR < "$HOME/.shell.d/.ter-repo"
@@ -398,8 +398,22 @@ fi'
 for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
     # Fresh Termux may ship without an rc file; create one so the loader sticks.
     [ -f "$rc" ] || touch "$rc"
+    if grep -q "$LOADER_MARKER" "$rc" 2>/dev/null \
+        && grep -Fq 'if [ -z "$TER_LOADED" ]; then' "$rc" 2>/dev/null; then
+        if ! grep -Fq '    export TER_LOADED=1' "$rc" 2>/dev/null; then
+            echo "Malformed legacy loader guard in $rc; deployment was not completed." >&2
+            exit 1
+        fi
+        sed -i \
+            -e 's/if \[ -z "$TER_LOADED" \]; then/if [ "${TER_LOADED_PID:-}" != "$$" ]; then/' \
+            -e 's/    export TER_LOADED=1/    TER_LOADED_PID=$$/' "$rc" || {
+            echo "Failed to migrate loader guard in $rc; deployment was not completed." >&2
+            exit 1
+        }
+        success "Loader guard upgraded in $(basename "$rc")"
+    fi
     if grep -q "$LOADER_MARKER" "$rc" 2>/dev/null; then
-        if grep -q "TER_LOADED" "$rc" 2>/dev/null; then
+        if grep -q "TER_LOADED_PID" "$rc" 2>/dev/null; then
             info "Loader (guarded) already present in $(basename "$rc")"
         else
             info "Upgrading unguarded loader in $(basename "$rc")..."

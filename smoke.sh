@@ -50,6 +50,8 @@ check_isolated_install() {
     if [ "$(cat "$test_home/.shell.d/.ter-repo")" = "$REPO" ] \
         && [ -f "$test_home/.shell.d/core/00-style.sh" ] \
         && [ -f "$test_home/.bashrc" ] \
+        && grep -Fq 'if [ "${TER_LOADED_PID:-}" != "$$" ]; then' "$test_home/.bashrc" \
+        && ! grep -Fq 'export TER_LOADED=1' "$test_home/.bashrc" \
         && [ -f "$test_home/.shell.d/.ter-managed-files" ] \
         && [ -f "$test_home/.shell.d/user/custom-local.sh" ] \
         && [ ! -e "$test_home/.shell.d/user/retired-module.sh" ] \
@@ -58,6 +60,27 @@ check_isolated_install() {
         echo "  [ ok ] isolated install + upgrade"
     else
         fail "isolated install + upgrade invariants"
+    fi
+
+    local shell loader_rc=0
+    for shell in bash zsh; do
+        command -v "$shell" >/dev/null 2>&1 || continue
+        if [ "$shell" = "bash" ]; then
+            HOME="$test_home" TMUX=ter-smoke TER_LOADED=1 TER_LOADED_PID=1 \
+                bash --noprofile --norc -c \
+                'source "$HOME/.bashrc"; type ter >/dev/null && type apps >/dev/null && type codext >/dev/null' \
+                || loader_rc=1
+        else
+            HOME="$test_home" TMUX=ter-smoke TER_LOADED=1 TER_LOADED_PID=1 \
+                zsh -f -c \
+                'source "$HOME/.zshrc"; type ter >/dev/null && type apps >/dev/null && type codext >/dev/null' \
+                || loader_rc=1
+        fi
+    done
+    if [ "$loader_rc" -eq 0 ]; then
+        echo "  [ ok ] child-shell command loading"
+    else
+        fail "child-shell command loading"
     fi
 
     mkdir "$test_home/.config/ter/install.lock"
@@ -83,6 +106,16 @@ check_isolated_install() {
         fail "post-deploy failure rollback"
     else
         echo "  [ ok ] post-deploy failure rollback"
+    fi
+
+    printf '%s\n' '# ── SHELL.D Modular Loader ──' 'if [ -z "$TER_LOADED" ]; then' '    export PATH="$HOME/.local/bin:$PATH"' 'fi' > "$test_home/.zshrc"
+    if HOME="$test_home" TER_SKIP_PKG=1 TER_SKIP_MOTD=1 TER_SKIP_RELOAD=1 TER_SKIP_HOOK=1 \
+        bash "$REPO/install.sh" >/dev/null 2>&1 \
+        || ! grep -Fq 'if [ -z "$TER_LOADED" ]; then' "$test_home/.zshrc" \
+        || grep -Fq 'TER_LOADED_PID' "$test_home/.zshrc"; then
+        fail "malformed loader guard rejection"
+    else
+        echo "  [ ok ] malformed loader guard rejection"
     fi
     rm -rf "$test_home"
 }
