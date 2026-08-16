@@ -384,6 +384,20 @@ check_tab_title() {
         return
     fi
 
+    _ter_preexec_title "oc"
+    if [ "$captured" != "📱 oc / ter" ]; then
+        fail "tab_title opencode hijack"
+        rm -rf "$test_home"
+        return
+    fi
+
+    _ter_preexec_title "opencode run --continue"
+    if [ "$captured" != "📱 opencode / ter" ]; then
+        fail "tab_title opencode arg parsing"
+        rm -rf "$test_home"
+        return
+    fi
+
     # Test PS1 escape cleanup
     local sample_ps1 cleaned_ps1
     sample_ps1='\[\e]0;\u@\h: \w\a\]\[\033[01;32m\]\u@\h\[\033[00m\]:\w\$ '

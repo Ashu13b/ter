@@ -10,6 +10,12 @@ export MY_NAME="Ashish Yadav"
 # Protected Ports
 export TNL_PROTECTED_PORTS="22 8022 443"
 
+# Let TER's tab-title logic (tab_title.sh) control the terminal/session name.
+# These CLIs would otherwise overwrite it while running. codex has no env var —
+# disable via `[tui] terminal_title = []` in ~/.codex/config.toml.
+export OPENCODE_DISABLE_TERMINAL_TITLE=1
+export CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1
+
 # Parse startup preferences as data, never as shell code. Keeping this in the
 # early core layer lets later startup modules reuse one fast, validated read.
 _ter_load_startup_config() {
