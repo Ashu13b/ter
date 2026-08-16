@@ -31,7 +31,8 @@ _TER_TITLE_WATCH_PID=""
 
 _ter_watch_loop() {
     local title="$1"
-    while :; do
+    local ppid="$$"
+    while kill -0 "$ppid" 2>/dev/null; do
         sleep 2
         _ter_set_title "$title"
     done
