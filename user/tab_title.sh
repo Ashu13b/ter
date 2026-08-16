@@ -300,16 +300,38 @@ _ter_preexec_title() {
     _ter_set_title "${icon} ${cmd_name} / ${folder}"
 }
 
-# ── Strip Ubuntu/Debian default PS1 title escapes ──
+# ── Strip Ubuntu/Debian default PS1 title escapes & Register Hooks ──
 if [ -n "$BASH_VERSION" ]; then
     if [ -n "${PS1:-}" ]; then
         if [[ "$PS1" == *"\\e]0;"* ]] || [[ "$PS1" == *"\\033]0;"* ]]; then
             PS1="$(printf '%s' "$PS1" | sed -E 's/(\\\[)?(\\[eE]|\\033)\]0;(\\.|[^\\])*\\[aA](\\\])?//g')"
         fi
     fi
+
+    _TER_BASH_PREEXEC_RUN=0
+    _ter_bash_preexec() {
+        [ "$_TER_BASH_PREEXEC_RUN" -eq 1 ] && return
+        [ -n "${COMP_LINE:-}" ] && return
+        [ "$BASH_COMMAND" = "${PROMPT_COMMAND:-}" ] && return
+        case "$BASH_COMMAND" in
+            _ter_*|*PROMPT_COMMAND*|*MANUAL_TAB_NAME*) return ;;
+        esac
+        _TER_BASH_PREEXEC_RUN=1
+        _ter_preexec_title "$BASH_COMMAND"
+    }
+
+    _ter_bash_precmd() {
+        _TER_BASH_PREEXEC_RUN=0
+        _ter_precmd_title
+    }
+
     case ";${PROMPT_COMMAND:-};" in
-        *";_ter_precmd_title;"*|*"_ter_precmd_title;"*) ;;
-        *) PROMPT_COMMAND="_ter_precmd_title;${PROMPT_COMMAND:-}" ;;
+        *";_ter_bash_precmd;"*|*"_ter_bash_precmd;"*) ;;
+        *) PROMPT_COMMAND="_ter_bash_precmd;${PROMPT_COMMAND:-}" ;;
+    esac
+
+    case $- in
+        *i*) trap '_ter_bash_preexec' DEBUG 2>/dev/null ;;
     esac
 elif [ -n "$ZSH_VERSION" ]; then
     autoload -Uz add-zsh-hook 2>/dev/null
