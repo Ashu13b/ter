@@ -6,6 +6,10 @@
 
 export DISABLE_AUTO_TITLE="true"
 
+# TUI agents (e.g. opencode) overwrite the tab title with their own name
+# ("OpenCode" / "OC | <session>"). Tell them to leave our title alone.
+export OPENCODE_DISABLE_TERMINAL_TITLE="1"
+
 # ── Title Output Helper ──
 _ter_set_title() {
     local title="$1"
@@ -16,6 +20,37 @@ _ter_set_title() {
         tmux rename-window "${clean_title}" 2>/dev/null || true
     else
         printf '\033]0;%s\007' "${clean_title}"
+    fi
+}
+
+# ── Persistent Title Watch ──
+# Long-running TUIs can still clobber the title (e.g. opencode blanks it on
+# renderer init). Re-assert our title on an interval while the app runs; the
+# next prompt (precmd) stops the loop.
+_TER_TITLE_WATCH_PID=""
+
+_ter_watch_loop() {
+    local title="$1"
+    while :; do
+        sleep 2
+        _ter_set_title "$title"
+    done
+}
+
+_ter_start_title_watch() {
+    _ter_stop_title_watch
+    case $- in
+        *i*) ;;
+        *) return ;;
+    esac
+    _ter_watch_loop "$1" &
+    _TER_TITLE_WATCH_PID=$!
+}
+
+_ter_stop_title_watch() {
+    if [ -n "${_TER_TITLE_WATCH_PID:-}" ]; then
+        kill "$_TER_TITLE_WATCH_PID" 2>/dev/null || true
+        _TER_TITLE_WATCH_PID=""
     fi
 }
 
@@ -96,13 +131,19 @@ _ter_where() {
 # ── Current Folder Formatter ──
 _ter_short_pwd() {
     local pwd_val="${PWD:-/}"
+    if [ "$pwd_val" = "$HOME" ]; then
+        echo "~"
+        return
+    fi
     local cur="${pwd_val##*/}"
     local par_dir="${pwd_val%/*}"
     local par="${par_dir##*/}"
     [ -z "$cur" ] && cur="root"
-    [ "$cur" = "files" ] && cur="home"
-    [ "$par" = "files" ] && par="home"
-    if [ -n "$par" ] && [ "$par" != "home" ]; then
+    [ "$cur" = "files" ] && cur="~"
+    [ "$par" = "files" ] && par="~"
+    [ "$par" = "home" ] && par="~"
+    [ -n "$USER" ] && [ "$par" = "$USER" ] && par="~"
+    if [ -n "$par" ] && [ "$par" != "~" ]; then
         echo "${par}/${cur}"
     else
         echo "$cur"
@@ -111,6 +152,7 @@ _ter_short_pwd() {
 
 # ── Precmd Hook: Native Shell / Idle Prompt ──
 _ter_precmd_title() {
+    _ter_stop_title_watch
     if [ -n "${MANUAL_TAB_NAME:-}" ]; then
         _ter_set_title "$MANUAL_TAB_NAME"
         return
@@ -126,14 +168,9 @@ _ter_precmd_title() {
     local where; where=$(_ter_where)
     local icon; icon=$(_ter_icon_for_env "$where")
     local folder; folder=$(_ter_short_pwd)
-    local prefix=""
 
-    if [ -n "${NEXUS_SERVICE_NAME:-}" ]; then
-        prefix="${NEXUS_SERVICE_NAME}:"
-    fi
-
-    # Native Shell (Idle): [icon] [service:]folder
-    _ter_set_title "${icon} ${prefix}${folder}"
+    # Native Shell (Idle): [icon] [folder]
+    _ter_set_title "${icon} ${folder}"
 }
 
 # ── Preexec Hook: Hijacked by Tool / Agent / Command ──
@@ -167,8 +204,6 @@ _ter_preexec_title() {
     local where; where=$(_ter_where)
     local icon; icon=$(_ter_icon_for_env "$where")
     local folder; folder=$(_ter_short_pwd)
-    local prefix=""
-    [ -n "${NEXUS_SERVICE_NAME:-}" ] && prefix="${NEXUS_SERVICE_NAME}:"
 
     case "$cmd_name" in
         # Remote SSH Hijack
@@ -200,8 +235,9 @@ _ter_preexec_title() {
             return
             ;;
         # AI Coding Agents & LLM CLIs
-        agy|codex|claude|aider|gemini|aichat|ai|opendevin)
-            _ter_set_title "${icon} ${prefix}${cmd_name} / ${folder}"
+        agy|codex|claude|aider|gemini|aichat|ai|opendevin|oc|opencode)
+            _ter_set_title "${icon} ${cmd_name} / ${folder}"
+            _ter_start_title_watch "${icon} ${cmd_name} / ${folder}"
             return
             ;;
         # Android Debug Bridge / Device Tools
@@ -256,14 +292,6 @@ _ter_preexec_title() {
             [ -z "$file_target" ] && file_target="$folder"
             _ter_set_title "${icon} ${cmd_name} / ${file_target}"
             return
-            ;;
-        # NEXUS Workflows
-        nx)
-            local nx_sub="${cmd_arg%% *}"
-            if [ -n "$nx_sub" ]; then
-                _ter_set_title "⚡ nx:${nx_sub} / ${folder}"
-                return
-            fi
             ;;
     esac
 
