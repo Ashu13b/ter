@@ -384,6 +384,89 @@ check_tab_title() {
         return
     fi
 
+    # Standalone variable assignment should not crash/loop and should not alter tab title
+    captured="INITIAL_TITLE"
+    _ter_preexec_title "A=1"
+    if [ "$captured" != "INITIAL_TITLE" ]; then
+        fail "tab_title standalone assignment handling"
+        rm -rf "$test_home"
+        return
+    fi
+
+    # SSH with -o Option=Value must not strip ssh command
+    _ter_preexec_title "ssh -o StrictHostKeyChecking=no user@oracle-server.internal"
+    if [ "$captured" != "☁️ oracle-server" ]; then
+        fail "tab_title ssh options with equals parsing"
+        rm -rf "$test_home"
+        return
+    fi
+
+    # Generic command with arguments containing equals sign
+    _ter_preexec_title "git config user.email=foo@bar.com"
+    if [ "$captured" != "📱 git / ter" ]; then
+        fail "tab_title command with equals argument parsing"
+        rm -rf "$test_home"
+        return
+    fi
+
+    # Wrapper + env assignment chaining
+    _ter_preexec_title "sudo FOO=bar vim /tmp/test.txt"
+    if [ "$captured" != "📱 vim / test.txt" ]; then
+        fail "tab_title sudo + env wrapper parsing"
+        rm -rf "$test_home"
+        return
+    fi
+
+    # Wrapper with CLI flags
+    _ter_preexec_title "sudo -u postgres psql"
+    if [ "$captured" != "📱 psql / ter" ]; then
+        fail "tab_title sudo with option argument parsing"
+        rm -rf "$test_home"
+        return
+    fi
+
+    _ter_preexec_title "sudo -E vim /tmp/test.txt"
+    if [ "$captured" != "📱 vim / test.txt" ]; then
+        fail "tab_title sudo with boolean flag parsing"
+        rm -rf "$test_home"
+        return
+    fi
+
+    _ter_preexec_title "env -i FOO=bar python3 script.py"
+    if [ "$captured" != "📱 python3 / script.py" ]; then
+        fail "tab_title env wrapper with flags parsing"
+        rm -rf "$test_home"
+        return
+    fi
+
+    _ter_preexec_title "sudo --preserve-env vim /tmp/test.txt"
+    if [ "$captured" != "📱 vim / test.txt" ]; then
+        fail "tab_title sudo with long flag parsing"
+        rm -rf "$test_home"
+        return
+    fi
+
+    _ter_preexec_title "sudo --user=postgres psql"
+    if [ "$captured" != "📱 psql / ter" ]; then
+        fail "tab_title sudo with long option equals parsing"
+        rm -rf "$test_home"
+        return
+    fi
+
+    _ter_preexec_title "sudo --user postgres psql"
+    if [ "$captured" != "📱 psql / ter" ]; then
+        fail "tab_title sudo with long option arg parsing"
+        rm -rf "$test_home"
+        return
+    fi
+
+    _ter_preexec_title "env --ignore-environment python3 script.py"
+    if [ "$captured" != "📱 python3 / script.py" ]; then
+        fail "tab_title env with long flag parsing"
+        rm -rf "$test_home"
+        return
+    fi
+
     _ter_preexec_title "oc"
     if [ "$captured" != "📱 oc / ter" ]; then
         fail "tab_title opencode hijack"
@@ -398,12 +481,52 @@ check_tab_title() {
         return
     fi
 
-    # Test PS1 escape cleanup
-    local sample_ps1 cleaned_ps1
-    sample_ps1='\[\e]0;\u@\h: \w\a\]\[\033[01;32m\]\u@\h\[\033[00m\]:\w\$ '
-    cleaned_ps1=$(printf '%s' "$sample_ps1" | sed -E 's/(\\\[)?(\\[eE]|\\033)\]0;(\\.|[^\\])*\\[aA](\\\])?//g')
-    if [ "$cleaned_ps1" != '\[\033[01;32m\]\u@\h\[\033[00m\]:\w\$ ' ]; then
-        fail "tab_title PS1 title stripping"
+    # Test PS1 escape cleanup (both string representation and literal escape bytes, OSC 0 and OSC 2)
+    BASH_VERSION="5.2.0"
+    PS1='\[\e]0;\u@\h: \w\a\]\[\033[01;32m\]\u@\h\[\033[00m\]:\w\$ '
+    _ter_sanitize_ps1
+    if [ "$PS1" != '\[\033[01;32m\]\u@\h\[\033[00m\]:\w\$ ' ]; then
+        fail "tab_title PS1 title stripping (escaped OSC 0)"
+        rm -rf "$test_home"
+        return
+    fi
+
+    PS1='\[\e]2;\u@\h: \w\a\]\[\033[01;32m\]\u@\h\[\033[00m\]:\w\$ '
+    _ter_sanitize_ps1
+    if [ "$PS1" != '\[\033[01;32m\]\u@\h\[\033[00m\]:\w\$ ' ]; then
+        fail "tab_title PS1 title stripping (escaped OSC 2)"
+        rm -rf "$test_home"
+        return
+    fi
+
+    PS1=$(printf '\033]0;ubuntu\007\\[\\033[01;32m\\]\\u@\\h\\[\\033[00m\\]:\\w\\$ ')
+    _ter_sanitize_ps1
+    if [ "$PS1" != '\[\033[01;32m\]\u@\h\[\033[00m\]:\w\$ ' ]; then
+        fail "tab_title PS1 title stripping (literal bytes OSC 0)"
+        rm -rf "$test_home"
+        return
+    fi
+
+    PS1=$(printf '\033]2;ubuntu\007\\[\\033[01;32m\\]\\u@\\h\\[\\033[00m\\]:\\w\\$ ')
+    _ter_sanitize_ps1
+    if [ "$PS1" != '\[\033[01;32m\]\u@\h\[\033[00m\]:\w\$ ' ]; then
+        fail "tab_title PS1 title stripping (literal bytes OSC 2)"
+        rm -rf "$test_home"
+        return
+    fi
+
+    # Test startup.conf without trailing newline
+    mkdir -p "$test_home/.config/ter"
+    printf 'TMUX_AUTOSTART=false\nWELCOME_DASHBOARD=false\nOPTIMIZE_STATUS=true' > "$test_home/.config/ter/startup.conf"
+    (
+        HOME="$test_home"
+        source "$REPO/core/01-config.sh"
+        if [ "$TMUX_AUTOSTART" != "false" ] || [ "$WELCOME_DASHBOARD" != "false" ] || [ "$OPTIMIZE_STATUS" != "true" ]; then
+            exit 1
+        fi
+    )
+    if [ $? -ne 0 ]; then
+        fail "startup.conf parsing without trailing newline"
         rm -rf "$test_home"
         return
     fi

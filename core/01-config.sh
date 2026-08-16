@@ -4,8 +4,8 @@ export NET_CHECK_TARGET="8.8.8.8"; export NET_CHECK_PORT="80"
 
 # Shell Identity
 export MY_NAME="Ashish Yadav"
-[ -n "$ZSH_VERSION" ] && export CURRENT_SHELL="zsh"
-[ -n "$BASH_VERSION" ] && export CURRENT_SHELL="bash"
+[ -n "${ZSH_VERSION:-}" ] && export CURRENT_SHELL="zsh"
+[ -n "${BASH_VERSION:-}" ] && export CURRENT_SHELL="bash"
 
 # Protected Ports
 export TNL_PROTECTED_PORTS="22 8022 443"
@@ -25,7 +25,7 @@ _ter_load_startup_config() {
     WELCOME_DASHBOARD=true
     OPTIMIZE_STATUS=false
     [ -f "$startup_file" ] || return 0
-    while IFS='=' read -r key value extra; do
+    while IFS='=' read -r key value extra || [ -n "$key" ]; do
         [ -z "${extra:-}" ] || continue
         case "$key:$value" in
             TMUX_AUTOSTART:true|TMUX_AUTOSTART:false) TMUX_AUTOSTART="$value" ;;

@@ -6,9 +6,10 @@
 
 export DISABLE_AUTO_TITLE="true"
 
-# TUI agents (e.g. opencode) overwrite the tab title with their own name
+# TUI agents (e.g. opencode, claude) overwrite the tab title with their own name
 # ("OpenCode" / "OC | <session>"). Tell them to leave our title alone.
 export OPENCODE_DISABLE_TERMINAL_TITLE="1"
+export CLAUDE_CODE_DISABLE_TERMINAL_TITLE="1"
 
 # ── Title Output Helper ──
 _ter_set_title() {
@@ -46,6 +47,7 @@ _ter_start_title_watch() {
     esac
     _ter_watch_loop "$1" &
     _TER_TITLE_WATCH_PID=$!
+    disown "$_TER_TITLE_WATCH_PID" 2>/dev/null || true
 }
 
 _ter_stop_title_watch() {
@@ -151,6 +153,16 @@ _ter_short_pwd() {
     fi
 }
 
+# ── Strip Ubuntu/Debian default PS1 title escapes Helper ──
+_ter_sanitize_ps1() {
+    if [ -n "${BASH_VERSION:-}" ] && [ -n "${PS1:-}" ]; then
+        if [[ "$PS1" == *"\\e]0;"* ]] || [[ "$PS1" == *"\\033]0;"* ]] || [[ "$PS1" == *$'\033]0;'* ]] || \
+           [[ "$PS1" == *"\\e]2;"* ]] || [[ "$PS1" == *"\\033]2;"* ]] || [[ "$PS1" == *$'\033]2;'* ]]; then
+            PS1="$(printf '%s' "$PS1" | sed -E 's/(\\\[)?(\\[eE]|\\033|\x1b)\][02];(\\.|[^\x07\x1b\\])*(\\[aA]|\x07|(\\[eE]|\\033|\x1b)\\\\)(\\\])?//g')"
+        fi
+    fi
+}
+
 # ── Precmd Hook: Native Shell / Idle Prompt ──
 _ter_precmd_title() {
     _ter_stop_title_watch
@@ -160,11 +172,7 @@ _ter_precmd_title() {
     fi
 
     # Dynamically sanitize Ubuntu/Debian default PS1 title escapes
-    if [ -n "$BASH_VERSION" ]; then
-        if [[ "$PS1" == *"\\e]0;"* ]] || [[ "$PS1" == *"\\033]0;"* ]] || [[ "$PS1" == *$'\033]0;'* ]]; then
-            PS1="$(printf '%s' "$PS1" | sed -E 's/(\\\[)?(\\[eE]|\\033|\x1b)\]0;(\\.|[^\\])*\\[aA](\\\])?//g')"
-        fi
-    fi
+    _ter_sanitize_ps1
 
     local where; where=$(_ter_where)
     local icon; icon=$(_ter_icon_for_env "$where")
@@ -182,19 +190,54 @@ _ter_preexec_title() {
     cmd="${cmd#"${cmd%%[![:space:]]*}"}"
     [ -z "$cmd" ] && return
 
-    # Strip environment variable assignments prefix (e.g. FOO=bar cmd)
-    while case "$cmd" in [A-Za-z_]*=*) true ;; *) false ;; esac; do
-        cmd="${cmd#* }"
-        cmd="${cmd#"${cmd%%[![:space:]]*}"}"
+    # Strip environment variable assignments and privilege wrappers
+    while [ -n "$cmd" ]; do
+        local first_token="${cmd%% *}"
+        case "$first_token" in
+            sudo|doas|env)
+                if [ "$first_token" = "$cmd" ]; then
+                    cmd=""
+                    break
+                fi
+                cmd="${cmd#* }"
+                cmd="${cmd#"${cmd%%[![:space:]]*}"}"
+                while [ -n "$cmd" ]; do
+                    case "$cmd" in
+                        -[uUgCphrTtS]|-u\ *|-U\ *|-g\ *|-C\ *|-p\ *|-h\ *|-r\ *|-t\ *|-T\ *|-S\ *)
+                            cmd="${cmd#* }"
+                            cmd="${cmd#"${cmd%%[![:space:]]*}"}"
+                            cmd="${cmd#* }"
+                            cmd="${cmd#"${cmd%%[![:space:]]*}"}"
+                            ;;
+                        --user\ *|--group\ *|--chdir\ *|--host\ *|--prompt\ *|--unset\ *|--split-string\ *)
+                            cmd="${cmd#* }"
+                            cmd="${cmd#"${cmd%%[![:space:]]*}"}"
+                            cmd="${cmd#* }"
+                            cmd="${cmd#"${cmd%%[![:space:]]*}"}"
+                            ;;
+                        --*|-*)
+                            cmd="${cmd#* }"
+                            cmd="${cmd#"${cmd%%[![:space:]]*}"}"
+                            ;;
+                        *)
+                            break
+                            ;;
+                    esac
+                done
+                ;;
+            [A-Za-z_]*=*)
+                if [ "$first_token" = "$cmd" ]; then
+                    cmd=""
+                    break
+                fi
+                cmd="${cmd#* }"
+                cmd="${cmd#"${cmd%%[![:space:]]*}"}"
+                ;;
+            *)
+                break
+                ;;
+        esac
     done
-
-    # Strip privilege / environment wrappers
-    case "${cmd%% *}" in
-        sudo|doas|env)
-            cmd="${cmd#* }"
-            cmd="${cmd#"${cmd%%[![:space:]]*}"}"
-            ;;
-    esac
     [ -z "$cmd" ] && return
 
     local cmd_name="${cmd%% *}"
@@ -302,11 +345,7 @@ _ter_preexec_title() {
 
 # ── Strip Ubuntu/Debian default PS1 title escapes & Register Hooks ──
 if [ -n "$BASH_VERSION" ]; then
-    if [ -n "${PS1:-}" ]; then
-        if [[ "$PS1" == *"\\e]0;"* ]] || [[ "$PS1" == *"\\033]0;"* ]]; then
-            PS1="$(printf '%s' "$PS1" | sed -E 's/(\\\[)?(\\[eE]|\\033)\]0;(\\.|[^\\])*\\[aA](\\\])?//g')"
-        fi
-    fi
+    _ter_sanitize_ps1
 
     _TER_BASH_PREEXEC_RUN=0
     _ter_bash_preexec() {
