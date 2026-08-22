@@ -5,6 +5,27 @@ All notable changes to TER are documented here. Older history lives in
 
 ## [Unreleased]
 
+### Added
+- `ter theme next` / `rotate` — cycles through palettes with wrap-around;
+  menu gains `[R]` and five new themes: Nord Frost (j), Ocean Deep (k),
+  Rose Quartz (l), Matrix Emerald (m), Sunset Ember (n). Theme definitions
+  consolidated into a single registry used by CLI, menu, and rotation.
+- Startup self-check: a one-line warning prints when core commands
+  (`ter`/`apps`) are missing after module load.
+- Version-controlled pre-commit hook (`hooks/pre-commit`); installer copies
+  it into `.git/hooks/`.
+
+### Changed
+- `install.sh` upgrades stale-but-guarded loader blocks in rc files
+  (old word-splitting bodies) to the current null-delimited loader; bare
+  marker comments elsewhere in rc files are preserved.
+- `smoke.sh` syntax-checks `extras/*.sh`.
+- `make_motd.py` derives paths from its own location and uses `shutil.copy`.
+
+### Docs
+- Refreshed `AGENTS.md`, `CLAUDE.md`, `.context.md`, `DEVELOPMENT.md`;
+  added roadmap to `DEVELOPMENT.md`.
+
 ## [1.4] — 2026-07-03
 
 ### Changed

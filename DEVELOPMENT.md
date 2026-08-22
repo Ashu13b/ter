@@ -7,7 +7,7 @@ This document captures the full development context for a new AI agent or develo
 ## Project Identity
 
 - **Name**: TER (Termux Environment Repository)
-- **Version**: 1.3
+- **Version**: 1.4
 - **Repo**: `~/ter` → pushed to GitHub as [Ashu13b/ter](https://github.com/Ashu13b/ter)
 - **Deploy target**: `~/.shell.d/` (sourced by `.bashrc` and `.zshrc`)
 - **Device**: OnePlus 13R (Snapdragon 8 Gen 3, Adreno 750 GPU)
@@ -40,12 +40,19 @@ This document captures the full development context for a new AI agent or develo
 ### Deployment Flow
 ```
 bash ~/ter/install.sh
-  → Copies core/, network/, user/ into ~/.shell.d/
+  → Ensures packages from packages.txt
+  → Snapshots the previous install to ~/.config/ter/backups/ (keeps 4)
+  → Copies core/, network/, user/, docs/ into ~/.shell.d/
   → Copies termux.properties into ~/.termux/
-  → Copies motd into /usr/etc/motd
-  → Adds SHELL.D loader to .bashrc (if not present)
-  → .zshrc sources .bashrc which sources everything in ~/.shell.d/
+  → Symlinks ~/.tmux.conf → ~/ter/.tmux.conf
+  → Regenerates motd (repo copy + /usr/etc/motd if writable)
+  → Installs/upgrades the guarded SHELL.D loader in .bashrc AND .zshrc
+    (normalizes legacy unguarded blocks and stale-but-guarded bodies)
+  → Deploys the version-controlled hooks/pre-commit into .git/hooks
 ```
+Verify with `bash smoke.sh` (also enforced by the pre-commit hook). Test
+changes in a new terminal session — `re` re-sources the rc files but does not
+re-run modules (per-PID `TER_LOADED_PID` guard).
 
 ### App Registration System
 Third-party projects (like NEXUS) register themselves under `~/.shell.d/apps/<name>/`:
@@ -114,6 +121,63 @@ These redundant aliases were cleaned up:
 * **Direct Tmux Renaming:** If running inside Tmux, the script uses the native `tmux rename-window` command rather than background escape sequence daemons, preventing race conditions.
 * **Directory Suffix (`/`):** Added a trailing slash (`/`) to the active directory names (e.g. `ter/`) to clearly designate them as folders.
 * **Clean Formatting:** Omitted the shell environment prefix (`t:`/`u:`) when running inside Tmux tabs to maximize horizontal space.
+
+---
+
+## Recent Changes (v1.4 → unreleased)
+
+### Installer hardening
+- `install.sh` now **normalizes stale-but-guarded loader blocks**: rc files
+  whose block had the per-PID guard but an old body (word-splitting find, no
+  `TER_REPO_DIR`) are stripped and rewritten with the current block.
+  Stripping is anchor-safe: bare `# ── SHELL.D Modular Loader ──` comment
+  headers elsewhere in an rc file are never touched.
+- The pre-commit smoke hook is version-controlled at `hooks/pre-commit`;
+  the installer copies it into `.git/hooks/` (heredoc only as fallback).
+
+### Theme system
+- Palette registry (`_ter_theme_spec`) is now the single source of truth for
+  CLI, interactive menu, and rotation.
+- Five new palettes: Nord Frost (j), Ocean Deep (k), Rose Quartz (l),
+  Matrix Emerald (m), Sunset Ember (n).
+- `ter theme next` (alias `rotate`, menu `[R]`) cycles to the next palette
+  and wraps; unknown current theme restarts from the top.
+
+### Startup resilience
+- `z-run.sh` prints a one-line warning when core commands (`ter`/`apps`)
+  fail to load — silently broken deployments are now visible at startup.
+
+### Tooling & docs
+- `smoke.sh` syntax-checks `extras/*.sh`.
+- `make_motd.py` derives paths from its own location and uses `shutil.copy`
+  instead of an unquoted `os.system("cp ...")`; works from any clone path.
+- Docs refreshed: `AGENTS.md`, `CLAUDE.md`, `.context.md`, this file.
+
+## Roadmap / Plans
+
+Prioritized ideas for future work:
+
+1. **`ter export|import`** — one-command migration to a new phone: clone +
+   packages.txt install + secrets scaffold + `~/.config/ter/` restore
+   (`device.lock` diagnostics already exist; make restore symmetric).
+2. **Termux:Widget shortcuts** — drop scripts into `~/.shortcuts/` so
+   adbcon / scan net / optimize fix become home-screen buttons.
+3. **Battery/thermal intelligence in `optimize`** — thermal throttling
+   status, auto-drop WakeLock below 15% battery or on high temp,
+   `termux-notification` on charge-full.
+4. **Permission-change watcher** — scheduled `adb-audit -p` diff that alerts
+   when any app newly gains camera/mic/location.
+5. **Notification hooks for `optimize run`** — completion toasts so long
+   background jobs don't need watching.
+6. **Downloads organizer** — `tidy dl`: sort `/Download` by type/date, dedupe.
+7. **`scan` additions** — hotspot client list (ARP), quick speedtest,
+   port-forward helper.
+8. **`ter pkgs add <pkg>`** — install and record into `packages.txt` so new
+   devices get it automatically (doctor already diffs installed-vs-listed).
+9. **Auto theme rotation** — opt-in flag in `startup.conf` applying
+   `theme next` once per session via `z-run.sh`.
+10. **CI** — GitHub Actions running `bash smoke.sh` (isolated HOME already
+    makes it CI-friendly).
 
 ---
 

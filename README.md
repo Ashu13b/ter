@@ -3,7 +3,7 @@
 TER is a portable, independent Termux environment configuration repository. It installs a modular shell structure, custom keyboard layout, and a modular app-registration system. It works completely standalone or can be integrated with other projects (like NEXUS) via the registry system.
 
 > [!TIP]
-> For a detailed guide on all custom CLI utilities, usage flags, and offline capabilities, see the [CLI Manual](docs/cli_manual.md).
+> For a detailed guide on all custom CLI utilities, usage flags, and offline capabilities, see the [CLI Manual](docs/cli_manual.md). Development context and the project roadmap live in [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ---
 
@@ -137,6 +137,20 @@ TER OS is tightly integrated with Tmux, completely customized for mobile thumbs 
 * **Mouse Mode:**
   * `~` + `m`: Toggle mouse ON/OFF (ON for taps/clicks, OFF for native kinetic scrolling)
   * Swipe up/down for ultra-fast, smooth 5-line scrolling.
+
+---
+
+## 🎨 Theme Switcher (`ter theme`)
+
+Ten eye-preserving palettes for the tmux status bar, switched instantly:
+Solarized & Sage Green (`c`), Midnight Indigo & Soft Lavender (`f`),
+Charcoal Coffee & Warm Sand (`g`), Aubergine Wine & Peach Cream (`h`),
+Obsidian Black & Amber Gold (`i`), Nord Frost & Glacier Blue (`j`),
+Ocean Deep & Aqua Glow (`k`), Rose Quartz & Blush Pink (`l`),
+Matrix Emerald & Neon Lime (`m`), Sunset Ember & Coral Bloom (`n`).
+
+- `ter theme <key>` — apply directly; `ter theme` — interactive menu.
+- `ter theme next` — rotate to the next palette (wraps around).
 
 ---
 
