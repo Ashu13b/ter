@@ -132,6 +132,7 @@ _ter_where() {
 }
 
 # ── Current Folder Formatter ──
+# Last folder component only — full paths make drawer tabs unreadable.
 _ter_short_pwd() {
     local pwd_val="${PWD:-/}"
     if [ "$pwd_val" = "$HOME" ]; then
@@ -139,24 +140,9 @@ _ter_short_pwd() {
         return
     fi
     local cur="${pwd_val##*/}"
-    local par_dir="${pwd_val%/*}"
-    local par="${par_dir##*/}"
     [ -z "$cur" ] && cur="root"
     [ "$cur" = "files" ] && cur="~"
-    [ "$par" = "files" ] && par="~"
-    [ "$par" = "home" ] && par="~"
-    [ -n "$USER" ] && [ "$par" = "$USER" ] && par="~"
-    local combined
-    if [ -n "$par" ] && [ "$par" != "~" ]; then
-        combined="${par}/${cur}"
-    else
-        combined="$cur"
-    fi
-    # Long paths: collapse to …/last-folder so drawer tabs stay readable.
-    if [ "${#combined}" -gt 24 ]; then
-        combined="…/${cur}"
-    fi
-    echo "$combined"
+    echo "$cur"
 }
 
 # ── Strip Ubuntu/Debian default PS1 title escapes Helper ──
@@ -185,7 +171,7 @@ _ter_precmd_title() {
     local folder; folder=$(_ter_short_pwd)
 
     # Native Shell (Idle): [icon] [folder]
-    _ter_set_title "${icon} ${folder}"
+    _ter_set_title "${icon}/${folder}"
 }
 
 # ── Preexec Hook: Hijacked by Tool / Agent / Command ──
@@ -281,7 +267,7 @@ _ter_preexec_title() {
             done
             [ -z "$host" ] && host="remote"
             icon=$(_ter_icon_for_env "$host")
-            _ter_set_title "${icon} ${host}"
+            _ter_set_title "${icon}/${host}"
             return
             ;;
         # AI Coding Agents & LLM CLIs
@@ -289,7 +275,7 @@ _ter_preexec_title() {
         # plain folder tabs (agents that overwrite titles get re-asserted by
         # the watch loop with this same format).
         agy|codex|claude|aider|gemini|aichat|ai|opendevin|oc|opencode)
-            local a_title="${icon} 🤖${cmd_name} · ${folder}"
+            local a_title="${icon}/[🤖${cmd_name}]/${folder}"
             _ter_set_title "${a_title}"
             _ter_start_title_watch "${a_title}"
             return
@@ -316,9 +302,9 @@ _ter_preexec_title() {
                 esac
             done
             if [ -n "$subcmd" ]; then
-                _ter_set_title "${icon} ${cmd_name}:${subcmd} / ${folder}"
+                _ter_set_title "${icon}/${cmd_name}:${subcmd}/${folder}"
             else
-                _ter_set_title "${icon} ${cmd_name} / ${folder}"
+                _ter_set_title "${icon}/${cmd_name}/${folder}"
             fi
             return
             ;;
@@ -344,13 +330,13 @@ _ter_preexec_title() {
                 esac
             done
             [ -z "$file_target" ] && file_target="$folder"
-            _ter_set_title "${icon} ${cmd_name} / ${file_target}"
+            _ter_set_title "${icon}/${cmd_name}/${file_target}"
             return
             ;;
     esac
 
     # Generic Active Command: [icon] [cmd] / [folder]
-    _ter_set_title "${icon} ${cmd_name} / ${folder}"
+    _ter_set_title "${icon}/${cmd_name}/${folder}"
 }
 
 # ── Strip Ubuntu/Debian default PS1 title escapes & Register Hooks ──

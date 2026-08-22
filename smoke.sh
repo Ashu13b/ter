@@ -350,35 +350,35 @@ check_tab_title() {
     _ter_short_pwd() { echo "ter"; }
 
     _ter_preexec_title "   adb devices"
-    if [ "$captured" != "📱 adb:devices / ter" ]; then
+    if [ "$captured" != "📱/adb:devices/ter" ]; then
         fail "tab_title adb single subcommand parsing"
         rm -rf "$test_home"
         return
     fi
 
     _ter_preexec_title "adb -s 192.168.1.5:5555 shell"
-    if [ "$captured" != "📱 adb:shell / ter" ]; then
+    if [ "$captured" != "📱/adb:shell/ter" ]; then
         fail "tab_title adb options parsing"
         rm -rf "$test_home"
         return
     fi
 
     _ter_preexec_title "ssh -p 2222 user@oracle-server.internal"
-    if [ "$captured" != "☁️ oracle-server" ]; then
+    if [ "$captured" != "☁️/oracle-server" ]; then
         fail "tab_title ssh hostname parsing"
         rm -rf "$test_home"
         return
     fi
 
     _ter_preexec_title "vim -u NONE /tmp/test.txt"
-    if [ "$captured" != "📱 vim / test.txt" ]; then
+    if [ "$captured" != "📱/vim/test.txt" ]; then
         fail "tab_title editor flag parsing"
         rm -rf "$test_home"
         return
     fi
 
     _ter_preexec_title "FOO=1 bar=2 claude"
-    if [ "$captured" != "📱 🤖claude · ter" ]; then
+    if [ "$captured" != "📱/[🤖claude]/ter" ]; then
         fail "tab_title env prefix parsing"
         rm -rf "$test_home"
         return
@@ -395,7 +395,7 @@ check_tab_title() {
 
     # SSH with -o Option=Value must not strip ssh command
     _ter_preexec_title "ssh -o StrictHostKeyChecking=no user@oracle-server.internal"
-    if [ "$captured" != "☁️ oracle-server" ]; then
+    if [ "$captured" != "☁️/oracle-server" ]; then
         fail "tab_title ssh options with equals parsing"
         rm -rf "$test_home"
         return
@@ -403,7 +403,7 @@ check_tab_title() {
 
     # Generic command with arguments containing equals sign
     _ter_preexec_title "git config user.email=foo@bar.com"
-    if [ "$captured" != "📱 git / ter" ]; then
+    if [ "$captured" != "📱/git/ter" ]; then
         fail "tab_title command with equals argument parsing"
         rm -rf "$test_home"
         return
@@ -411,7 +411,7 @@ check_tab_title() {
 
     # Wrapper + env assignment chaining
     _ter_preexec_title "sudo FOO=bar vim /tmp/test.txt"
-    if [ "$captured" != "📱 vim / test.txt" ]; then
+    if [ "$captured" != "📱/vim/test.txt" ]; then
         fail "tab_title sudo + env wrapper parsing"
         rm -rf "$test_home"
         return
@@ -419,63 +419,63 @@ check_tab_title() {
 
     # Wrapper with CLI flags
     _ter_preexec_title "sudo -u postgres psql"
-    if [ "$captured" != "📱 psql / ter" ]; then
+    if [ "$captured" != "📱/psql/ter" ]; then
         fail "tab_title sudo with option argument parsing"
         rm -rf "$test_home"
         return
     fi
 
     _ter_preexec_title "sudo -E vim /tmp/test.txt"
-    if [ "$captured" != "📱 vim / test.txt" ]; then
+    if [ "$captured" != "📱/vim/test.txt" ]; then
         fail "tab_title sudo with boolean flag parsing"
         rm -rf "$test_home"
         return
     fi
 
     _ter_preexec_title "env -i FOO=bar python3 script.py"
-    if [ "$captured" != "📱 python3 / script.py" ]; then
+    if [ "$captured" != "📱/python3/script.py" ]; then
         fail "tab_title env wrapper with flags parsing"
         rm -rf "$test_home"
         return
     fi
 
     _ter_preexec_title "sudo --preserve-env vim /tmp/test.txt"
-    if [ "$captured" != "📱 vim / test.txt" ]; then
+    if [ "$captured" != "📱/vim/test.txt" ]; then
         fail "tab_title sudo with long flag parsing"
         rm -rf "$test_home"
         return
     fi
 
     _ter_preexec_title "sudo --user=postgres psql"
-    if [ "$captured" != "📱 psql / ter" ]; then
+    if [ "$captured" != "📱/psql/ter" ]; then
         fail "tab_title sudo with long option equals parsing"
         rm -rf "$test_home"
         return
     fi
 
     _ter_preexec_title "sudo --user postgres psql"
-    if [ "$captured" != "📱 psql / ter" ]; then
+    if [ "$captured" != "📱/psql/ter" ]; then
         fail "tab_title sudo with long option arg parsing"
         rm -rf "$test_home"
         return
     fi
 
     _ter_preexec_title "env --ignore-environment python3 script.py"
-    if [ "$captured" != "📱 python3 / script.py" ]; then
+    if [ "$captured" != "📱/python3/script.py" ]; then
         fail "tab_title env with long flag parsing"
         rm -rf "$test_home"
         return
     fi
 
     _ter_preexec_title "oc"
-    if [ "$captured" != "📱 🤖oc · ter" ]; then
+    if [ "$captured" != "📱/[🤖oc]/ter" ]; then
         fail "tab_title opencode hijack"
         rm -rf "$test_home"
         return
     fi
 
     _ter_preexec_title "opencode run --continue"
-    if [ "$captured" != "📱 🤖opencode · ter" ]; then
+    if [ "$captured" != "📱/[🤖opencode]/ter" ]; then
         fail "tab_title opencode arg parsing"
         rm -rf "$test_home"
         return
