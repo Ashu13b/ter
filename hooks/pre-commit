@@ -1,0 +1,8 @@
+#!/data/data/com.termux/files/usr/bin/env bash
+# Auto-installed by ter/install.sh — runs shell smoke test before commit.
+REPO="$(git rev-parse --show-toplevel)"
+[ -x "$REPO/smoke.sh" ] || exit 0
+"$REPO/smoke.sh" >/dev/null 2>&1 || {
+    echo "✗ pre-commit: smoke.sh failed. Run 'bash smoke.sh' to see details."
+    exit 1
+}

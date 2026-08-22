@@ -395,6 +395,31 @@ if [ "${TER_LOADED_PID:-}" != "$$" ]; then
     done
 fi'
 
+# Remove every SHELL.D loader block (any generation) from an rc file.
+# A marker counts as a block start only when the NEXT line begins a known
+# loader body (guarded, legacy-guarded, or unguarded); blocks end at the
+# first column-0 'fi' or 'done'. Bare marker comments elsewhere are left alone,
+# as are inner if/fi/done (always indented).
+strip_loader_blocks() {
+    python3 - "$1" << 'PY'
+import sys, re
+path = sys.argv[1]
+text = open(path).read()
+pat = re.compile(
+    r'\n?# ── SHELL\.D Modular Loader ──\n'
+    r'(?:'
+    r'if \[ "\$\{TER_LOADED_PID:-\}" != "\$\$" \]; then\n.*?\nfi\n'
+    r'|if \[ -z "\$TER_LOADED" \]; then\n.*?\nfi\n'
+    r'|(?:export PATH=.*?\n)?for dir in core network user; do\n.*?\ndone\n?'
+    r')',
+    re.DOTALL)
+new = pat.sub('\n', text)
+if new == text:
+    sys.exit(1)
+open(path, 'w').write(new)
+PY
+}
+
 for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
     # Fresh Termux may ship without an rc file; create one so the loader sticks.
     [ -f "$rc" ] || touch "$rc"
@@ -413,21 +438,19 @@ for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
         success "Loader guard upgraded in $(basename "$rc")"
     fi
     if grep -q "$LOADER_MARKER" "$rc" 2>/dev/null; then
-        if grep -q "TER_LOADED_PID" "$rc" 2>/dev/null; then
-            info "Loader (guarded) already present in $(basename "$rc")"
+        if grep -q "TER_LOADED_PID" "$rc" 2>/dev/null \
+            && grep -q "TER_REPO_DIR" "$rc" 2>/dev/null; then
+            info "Loader (guarded, current) already present in $(basename "$rc")"
         else
-            info "Upgrading unguarded loader in $(basename "$rc")..."
-            # Strip old loader block (from marker line to the closing 'done').
-            python3 - "$rc" << 'PY'
-import sys, re
-path = sys.argv[1]
-text = open(path).read()
-pat = re.compile(r'\n?# ── SHELL\.D Modular Loader ──\n(?:export PATH=.*?\n)?for dir in core network user; do\n.*?\ndone\n?',
-                 re.DOTALL)
-# Strip ALL matching unguarded blocks; the guarded one (with TER_LOADED) won't match.
-new = pat.sub('\n', text)
-open(path, 'w').write(new)
-PY
+            if grep -q "TER_REPO_DIR" "$rc" 2>/dev/null; then
+                info "Upgrading unguarded loader in $(basename "$rc")..."
+            else
+                info "Upgrading stale guarded loader in $(basename "$rc")..."
+            fi
+            strip_loader_blocks "$rc" || {
+                echo "Failed to strip old loader block in $rc; deployment was not completed." >&2
+                exit 1
+            }
             printf '%s\n' "$LOADER_BLOCK" >> "$rc"
             success "Loader upgraded in $(basename "$rc")"
         fi
@@ -442,10 +465,14 @@ if [ "${TER_SKIP_RELOAD:-0}" != "1" ] && command -v termux-reload-settings &>/de
     termux-reload-settings
 fi
 
-# Install pre-commit smoke hook (idempotent).
+# Install pre-commit smoke hook (idempotent). The canonical hook lives in
+# hooks/pre-commit so it is version-controlled and cannot drift from this copy.
 HOOK="$REPO_DIR/.git/hooks/pre-commit"
 if [ "${TER_SKIP_HOOK:-0}" != "1" ] && [ -d "$REPO_DIR/.git" ] && { [ ! -e "$HOOK" ] || [ ! -s "$HOOK" ] || ! grep -q "smoke.sh" "$HOOK"; }; then
-    cat > "$HOOK" << 'HOOK_EOF'
+    if [ -f "$REPO_DIR/hooks/pre-commit" ]; then
+        cp "$REPO_DIR/hooks/pre-commit" "$HOOK"
+    else
+        cat > "$HOOK" << 'HOOK_EOF'
 #!/data/data/com.termux/files/usr/bin/env bash
 # Auto-installed by ter/install.sh — runs shell smoke test before commit.
 REPO="$(git rev-parse --show-toplevel)"
@@ -455,6 +482,7 @@ REPO="$(git rev-parse --show-toplevel)"
     exit 1
 }
 HOOK_EOF
+    fi
     chmod +x "$HOOK"
     success "Pre-commit smoke hook installed."
 fi
