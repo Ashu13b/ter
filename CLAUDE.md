@@ -25,7 +25,7 @@ Third-party projects register under `~/.shell.d/apps/<name>/` with a `manifest.j
 ## Key entry points
 
 - `core/app-loader.sh` — scans `~/.shell.d/apps/` and defines the `apps` registry command.
-- `core/theme.sh` + `core/theme_colors.sh` — prompt/theme. Theme switching is exposed via `ter theme` (see `user/ter_cmd.sh`); themes are baked into `.tmux.conf` and swapped by rewriting `~/ter/.tmux.conf` (the runtime `~/.tmux.conf` is a symlink to it; both are written only if the symlink is missing).
+- `core/theme.sh` + `core/theme_colors.sh` — prompt/theme. Theme switching is exposed via `ter theme` (see `user/ter_cmd.sh`); themes are baked into `.tmux.conf` and swapped by rewriting `~/.tmux.conf` — a symlink to the per-user `~/.config/ter/tmux.conf`, seeded once by `install.sh` from the tracked `tmux.conf.template`.
 - `user/aliases.sh` — base aliases plus the custom `cd()` function that special-cases `cd ws` / `cd dl`.
 - `user/optimize.py` + `user/optimize.sh` — background stability engine. `user/z-run.sh` runs the compact one-line status on every interactive startup.
 - `user/adb_utils.sh` + `user/adb-audit.py` + `user/adb-manage.py` + `user/adb_common.py` — ADB-over-WiFi tooling. `adb_common.py` is the shared Python helper for the two CLIs.

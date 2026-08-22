@@ -142,7 +142,8 @@ TER OS is tightly integrated with Tmux, completely customized for mobile thumbs 
 
 ## 🎨 Theme Switcher (`ter theme`)
 
-Ten eye-preserving palettes for the tmux status bar, switched instantly:
+Ten eye-preserving palettes that color your **native Termux prompt** (and the
+tmux status bar, if you use tmux):
 Solarized & Sage Green (`c`), Midnight Indigo & Soft Lavender (`f`),
 Charcoal Coffee & Warm Sand (`g`), Aubergine Wine & Peach Cream (`h`),
 Obsidian Black & Amber Gold (`i`), Nord Frost & Glacier Blue (`j`),
@@ -151,6 +152,18 @@ Matrix Emerald & Neon Lime (`m`), Sunset Ember & Coral Bloom (`n`).
 
 - `ter theme <key>` — apply directly; `ter theme` — interactive menu.
 - `ter theme next` — rotate to the next palette (wraps around).
+- Prompt colors live in `~/.config/ter/prompt_colors.sh` (per-user, survives reinstalls).
+
+---
+
+## 🪟 Tmux (optional / legacy)
+
+TER grew out of a tmux-driven mobile workflow and still ships full support:
+mobile-friendly config (prefix `~`, touch scrolling, 2-line tab bar) that is
+seeded per-user by `install.sh`. It is **entirely optional** — tmux autostart
+is off by default (`ter toggle tmux` / `~/.config/ter/startup.conf`), nothing
+tmux-related runs unless you start tmux yourself. The theme switcher keeps the
+tmux bar in sync for occasional use.
 
 ---
 

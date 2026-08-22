@@ -16,6 +16,13 @@ All notable changes to TER are documented here. Older history lives in
   it into `.git/hooks/`.
 
 ### Changed
+- **Theming retargeted at the native Termux prompt**: `ter theme` now also
+  writes per-user prompt colors (`~/.config/ter/prompt_colors.sh`, survives
+  reinstalls); the bash prompt honors them too (was hardcoded).
+- **Tmux config is no longer tracked as themed state**: repo ships
+  `tmux.conf.template` (default palette); `install.sh` seeds a per-user
+  `~/.config/ter/tmux.conf` and links `~/.tmux.conf` to it, so theme choices
+  never dirty the repo. Tmux itself remains optional/legacy — autostart off.
 - `install.sh` upgrades stale-but-guarded loader blocks in rc files
   (old word-splitting bodies) to the current null-delimited loader; bare
   marker comments elsewhere in rc files are preserved.

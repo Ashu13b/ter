@@ -344,24 +344,31 @@ if [ -f "$REPO_DIR/termux.properties" ]; then
     success "Keyboard layout deployed."
 fi
 
-if [ -f "$REPO_DIR/.tmux.conf" ]; then
-    # Symlink so 'ter theme' only has one file to write and edits stay in sync.
-    if [ -L "$HOME/.tmux.conf" ]; then
-        current_tmux=$(readlink -f "$HOME/.tmux.conf" 2>/dev/null || true)
-        if [ "$current_tmux" = "$REPO_DIR/.tmux.conf" ]; then
-            success "Tmux config already linked to repo."
+if [ -f "$REPO_DIR/tmux.conf.template" ]; then
+    # Per-user tmux config: seeded ONCE from the tracked template, then owned
+    # by the user — 'ter theme' edits the runtime copy and the repo stays clean
+    # (no theme churn in git status).
+    TMUX_RUNTIME="$HOME/.config/ter/tmux.conf"
+    mkdir -p "$HOME/.config/ter"
+    if [ ! -f "$TMUX_RUNTIME" ]; then
+        if [ -f "$HOME/.tmux.conf" ]; then
+            # Migrate: preserve whatever theme the current conf carries.
+            cp "$HOME/.tmux.conf" "$TMUX_RUNTIME"
+            success "Tmux config migrated (theme preserved)."
         else
-            mv "$HOME/.tmux.conf" "$HOME/.tmux.conf.bak.$(date +%s)"
-            ln -s "$REPO_DIR/.tmux.conf" "$HOME/.tmux.conf"
-            success "Tmux config: backed up unrelated symlink, linked repo."
+            cp "$REPO_DIR/tmux.conf.template" "$TMUX_RUNTIME"
+            success "Tmux config seeded from template."
         fi
-    elif [ -f "$HOME/.tmux.conf" ]; then
-        mv "$HOME/.tmux.conf" "$HOME/.tmux.conf.bak.$(date +%s)"
-        ln -s "$REPO_DIR/.tmux.conf" "$HOME/.tmux.conf"
-        success "Tmux config: backed up old, symlinked → repo."
+    fi
+    want_link="$TMUX_RUNTIME"
+    if [ -L "$HOME/.tmux.conf" ] && [ "$(readlink -f "$HOME/.tmux.conf" 2>/dev/null)" = "$want_link" ]; then
+        success "Tmux config already linked."
     else
-        ln -s "$REPO_DIR/.tmux.conf" "$HOME/.tmux.conf"
-        success "Tmux config symlinked → repo."
+        if [ -e "$HOME/.tmux.conf" ] || [ -L "$HOME/.tmux.conf" ]; then
+            mv "$HOME/.tmux.conf" "$HOME/.tmux.conf.bak.$(date +%s)"
+        fi
+        ln -s "$want_link" "$HOME/.tmux.conf"
+        success "Tmux config symlinked → $want_link"
     fi
 fi
 

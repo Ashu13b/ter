@@ -2,6 +2,8 @@
 
 # Load dynamic colors if they exist, fallback to Nord blue (4) and Green (2)
 [ -f ~/.shell.d/core/theme_colors.sh ] && source ~/.shell.d/core/theme_colors.sh
+# Per-user theme override written by 'ter theme' — survives reinstalls.
+[ -f "$HOME/.config/ter/prompt_colors.sh" ] && source "$HOME/.config/ter/prompt_colors.sh"
 L_CLR=${TER_P_LINE:-4}
 A_CLR=${TER_P_ACCENT:-2}
 
@@ -31,6 +33,7 @@ elif [ -n "$BASH_VERSION" ]; then
         local b; b=$(git branch --show-current 2>/dev/null)
         [ -n "$b" ] && echo -e " \e[1;36m◈\e[0m \e[1;35m$b\e[0m" || true
     }
-    PS1='\n\[\e[1;34m\]▬▬ \[\e[1;36m\]$(_p_context)\[\e[0m\]$(_b_git) \[\e[1;34m\]▬▬ \[\e[0;36m\]\w\[\e[0m\]\n\[\e[1;32m\]➤\[\e[0m\] '
+    # Colors expand at source time so 'ter theme' changes apply on reload.
+    PS1="\n\[\e[38;5;${L_CLR}m\]▬▬ \[\e[38;5;36m\]\$(_p_context)\[\e[0m\]\$(_b_git) \[\e[38;5;${L_CLR}m\]▬▬ \[\e[0;36m\]\w\[\e[0m\]\n\[\e[38;5;${A_CLR}m\]➤\[\e[0m\] "
 fi
 

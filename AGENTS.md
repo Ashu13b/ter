@@ -7,7 +7,7 @@ TER is a Termux shell-environment config repo (Zsh primary, Bash fallback). This
 - Edit files here, **never** the deployed `~/.shell.d/` copy (installer wipes and re-copies it).
 - Verify: `bash smoke.sh` — the only automated check. It runs `bash -n` on every `.sh`, `py_compile` on every `.py`, an isolated install/upgrade/rollback test, and sources all modules in clean Bash **and** Zsh checking that expected commands exist. Run it after any module change.
 - Commit gate: `install.sh` installs a `.git/hooks/pre-commit` that runs `smoke.sh` and rejects the commit on failure. The hook is untracked — a fresh clone has no gate until `install.sh` runs.
-- Deploy: `bash install.sh` (copies `core/ network/ user/ docs/` to `~/.shell.d/`, deploys `termux.properties`, `.tmux.conf`, `motd`, appends the guarded loader to both `~/.bashrc` and `~/.zshrc`). Then test in a **new terminal session**: the loader is guarded per shell PID (`TER_LOADED_PID`), so `re` re-sources the rc files but does **not** re-run the modules in the current shell.
+- Deploy: `bash install.sh` (copies `core/ network/ user/ docs/` to `~/.shell.d/`, deploys `termux.properties`, seeds+links the per-user tmux config, regenerates `motd`, appends the guarded loader to both `~/.bashrc` and `~/.zshrc`). Then test in a **new terminal session**: the loader is guarded per shell PID (`TER_LOADED_PID`), so `re` re-sources the rc files but does **not** re-run the modules in the current shell.
 - `ter doctor` checks repo-vs-runtime drift; `ter sync` copies runtime changes back into the repo — review the diff it produces before committing. `.terignore` controls what doctor/sync skip.
 - No build step, linter, or test framework beyond `smoke.sh`.
 
@@ -22,7 +22,7 @@ The loader sources every `*.sh` (maxdepth 1, lexical order) in `~/.shell.d/core/
 
 - `motd` — regenerate with `python3 make_motd.py` (gitignored artifact).
 - `device.lock` — written by `ter snapshot`.
-- `~/.tmux.conf` is a symlink to the repo's `.tmux.conf` (created by `install.sh`) — edit the repo file; `ter theme` writes through the symlink. Only when the symlink is missing does `ter theme` fall back to writing both copies, which must then be kept in sync manually.
+- `~/.tmux.conf` — symlink to the **per-user** `~/.config/ter/tmux.conf`, seeded once by `install.sh` from the tracked `tmux.conf.template`. `ter theme` edits only that runtime copy — **never commit theme-colored configs**; the template holds the default palette and stays untouched by themes.
 
 ## Conventions
 

@@ -146,11 +146,17 @@ _ter_short_pwd() {
     [ "$par" = "files" ] && par="~"
     [ "$par" = "home" ] && par="~"
     [ -n "$USER" ] && [ "$par" = "$USER" ] && par="~"
+    local combined
     if [ -n "$par" ] && [ "$par" != "~" ]; then
-        echo "${par}/${cur}"
+        combined="${par}/${cur}"
     else
-        echo "$cur"
+        combined="$cur"
     fi
+    # Long paths: collapse to …/last-folder so drawer tabs stay readable.
+    if [ "${#combined}" -gt 24 ]; then
+        combined="…/${cur}"
+    fi
+    echo "$combined"
 }
 
 # ── Strip Ubuntu/Debian default PS1 title escapes Helper ──
@@ -279,9 +285,13 @@ _ter_preexec_title() {
             return
             ;;
         # AI Coding Agents & LLM CLIs
+        # 🤖 marker makes agent-hijacked tabs instantly distinguishable from
+        # plain folder tabs (agents that overwrite titles get re-asserted by
+        # the watch loop with this same format).
         agy|codex|claude|aider|gemini|aichat|ai|opendevin|oc|opencode)
-            _ter_set_title "${icon} ${cmd_name} / ${folder}"
-            _ter_start_title_watch "${icon} ${cmd_name} / ${folder}"
+            local a_title="${icon} 🤖${cmd_name} · ${folder}"
+            _ter_set_title "${a_title}"
+            _ter_start_title_watch "${a_title}"
             return
             ;;
         # Android Debug Bridge / Device Tools
