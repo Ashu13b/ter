@@ -51,6 +51,66 @@ _ter_apply_theme() {
     tmux source-file "$conf_file" 2>/dev/null || true
 }
 
+# ── Theme registry ──
+# Single source of truth for palettes: key -> "inactive|active|accent|Name".
+_ter_theme_spec() {
+    case "$1" in
+        C|c|solarized)  printf '%s\n' "108|253|136|Solarized & Sage Green" ;;
+        F|f|midnight)   printf '%s\n' "189|253|211|Midnight Indigo & Soft Lavender" ;;
+        G|g|charcoal)   printf '%s\n' "223|187|215|Charcoal Coffee & Warm Sand" ;;
+        H|h|aubergine)  printf '%s\n' "224|181|173|Aubergine Wine & Peach Cream" ;;
+        I|i|obsidian)   printf '%s\n' "179|137|179|Obsidian Black & Amber Gold" ;;
+        J|j|nord)       printf '%s\n' "110|139|75|Nord Frost & Glacier Blue" ;;
+        K|k|ocean)      printf '%s\n' "66|109|80|Ocean Deep & Aqua Glow" ;;
+        L|l|rose)       printf '%s\n' "181|218|168|Rose Quartz & Blush Pink" ;;
+        M|m|matrix)     printf '%s\n' "65|114|46|Matrix Emerald & Neon Lime" ;;
+        N|n|sunset)     printf '%s\n' "131|209|202|Sunset Ember & Coral Bloom" ;;
+    esac
+}
+
+_ter_theme_keys() {
+    printf '%s\n' C F G H I J K L M N
+}
+
+_ter_set_theme() {
+    local spec inactive active rest accent name
+    spec=$(_ter_theme_spec "$1")
+    if [ -z "$spec" ]; then
+        echo "Unknown theme: $1"
+        echo "Available themes: c f g h i j k l m n (or 'ter theme next')"
+        return 1
+    fi
+    inactive="${spec%%|*}"
+    rest="${spec#*|}"
+    active="${rest%%|*}"
+    rest="${rest#*|}"
+    accent="${rest%%|*}"
+    name="${rest#*|}"
+    _ter_apply_theme "$inactive" "$active" "$accent" 232 "$name"
+    echo -e "\033[1;32m✓ Theme updated to $name.\033[0m"
+}
+
+# Rotate to the palette after the currently applied one (wraps around).
+_ter_theme_next() {
+    local cur key spec name prev_key="" first_key=""
+    cur=$(sed -n -E 's/.*Soothing eye-preserving pane styles \((.*) - Transparent Backgrounds\).*/\1/p' "$HOME/.tmux.conf" 2>/dev/null)
+    while IFS= read -r key; do
+        [ -n "$first_key" ] || first_key="$key"
+        spec=$(_ter_theme_spec "$key") || continue
+        name="${spec##*|}"
+        if [ "$name" = "$cur" ]; then
+            prev_key="$key"
+            continue
+        fi
+        if [ -n "$prev_key" ]; then
+            _ter_set_theme "$key"
+            return
+        fi
+    done < <(_ter_theme_keys)
+    # Unknown current theme or wrapped past the last palette -> go to first.
+    _ter_set_theme "$first_key"
+}
+
 _ter_is_ignored() {
     local rel_path="$1"
     local file_name="${rel_path##*/}"
@@ -130,7 +190,7 @@ EOF
         echo "  ter           Settings panel"
         echo "  ter wizard    First-run setup (git, ssh, gh, secrets)"
         echo "  ter toggle    tmux|welcome|status"
-        echo "  ter theme     Switch eye-preserving themes"
+        echo "  ter theme     Switch eye-preserving themes ('ter theme next' rotates)"
         echo "  ter doctor    Check repo vs deployed drift"
         echo "  ter sync      Copy drifted runtime files back to repo"
         echo "  ter update    git pull + redeploy"
@@ -730,65 +790,42 @@ EOF
 
     # Handle theme selection
     if [ "$1" = "theme" ]; then
+        if [ "$2" = "next" ] || [ "$2" = "rotate" ]; then
+            _ter_theme_next
+            return
+        fi
         if [ -n "$2" ]; then
-            case "$2" in
-                C|c|solarized)
-                    _ter_apply_theme 108 253 136 232 "Solarized & Sage Green"
-                    ;;
-                F|f|midnight)
-                    _ter_apply_theme 189 253 211 232 "Midnight Indigo & Soft Lavender"
-                    ;;
-                G|g|charcoal)
-                    _ter_apply_theme 223 187 215 232 "Charcoal Coffee & Warm Sand"
-                    ;;
-                H|h|aubergine)
-                    _ter_apply_theme 224 181 173 232 "Aubergine Wine & Peach Cream"
-                    ;;
-                I|i|obsidian)
-                    _ter_apply_theme 179 137 179 232 "Obsidian Black & Amber Gold"
-                    ;;
-                *)
-                    echo "Unknown theme: $2"
-                    echo "Available themes: c (solarized), f (midnight), g (charcoal), h (aubergine), i (obsidian)"
-                    return 1
-                    ;;
-            esac
-            echo -e "\033[1;32m✓ Theme updated to $2.\033[0m"
+            _ter_set_theme "$2"
             return
         fi
 
         # Interactive Menu
         echo -e "\n\033[1;36m  🎨 TER OS Theme Switcher\033[0m"
         echo -e "\033[1;36m  ━━━━━━━━━━━━━━━━━━━━━━\033[0m"
-        echo "  [C] Solarized & Sage Green"
-        echo "  [F] Midnight Indigo & Soft Lavender"
-        echo "  [G] Charcoal Coffee & Warm Sand"
-        echo "  [H] Aubergine Wine & Peach Cream"
-        echo "  [I] Obsidian Black & Amber Gold"
+        echo "  [C] Solarized & Sage Green        [H] Aubergine Wine & Peach Cream"
+        echo "  [F] Midnight Indigo & Soft Lavender  [I] Obsidian Black & Amber Gold"
+        echo "  [G] Charcoal Coffee & Warm Sand   [J] Nord Frost & Glacier Blue"
+        echo "  [K] Ocean Deep & Aqua Glow        [L] Rose Quartz & Blush Pink"
+        echo "  [M] Matrix Emerald & Neon Lime    [N] Sunset Ember & Coral Bloom"
         echo ""
-        read -p "Select theme [C/F/G/H/I]: " choice
+        echo "  [R] Rotate to next theme"
+        echo ""
+        read -p "Select theme [C-N/R]: " choice
         case "$choice" in
-            [Cc])
-                _ter_apply_theme 108 253 136 232 "Solarized & Sage Green"
+            R|r)
+                _ter_theme_next
                 ;;
-            [Ff])
-                _ter_apply_theme 189 253 211 232 "Midnight Indigo & Soft Lavender"
-                ;;
-            [Gg])
-                _ter_apply_theme 223 187 215 232 "Charcoal Coffee & Warm Sand"
-                ;;
-            [Hh])
-                _ter_apply_theme 224 181 173 232 "Aubergine Wine & Peach Cream"
-                ;;
-            [Ii])
-                _ter_apply_theme 179 137 179 232 "Obsidian Black & Amber Gold"
-                ;;
-            *)
+            "")
                 echo "No changes made."
                 return
                 ;;
+            *)
+                if ! _ter_set_theme "$choice"; then
+                    echo "No changes made."
+                    return
+                fi
+                ;;
         esac
-        echo -e "\033[1;32m✓ Theme updated successfully!\033[0m"
         return
     fi
 
