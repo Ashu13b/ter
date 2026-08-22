@@ -9,7 +9,7 @@ TER is a Termux shell environment (v1.4) for a single mobile device (OnePlus 13R
 ## Core workflow
 
 - **Always edit in `~/ter/`** (this repo, the source of truth). Never edit `~/.shell.d/` directly — it is overwritten on every install.
-- **Deploy after every change**: `bash ~/ter/install.sh`. The installer wipes and re-copies `core/`, `network/`, `user/`, `docs/` into `~/.shell.d/`, deploys `termux.properties`, `.tmux.conf`, and `motd`, and appends a SHELL.D loader block to `~/.bashrc` if missing. `.zshrc` sources `.bashrc`.
+- **Deploy after every change**: `bash ~/ter/install.sh`. The installer wipes and re-copies `core/`, `network/`, `user/`, `docs/` into `~/.shell.d/`, deploys `termux.properties`, `.tmux.conf`, and `motd`, and appends the guarded SHELL.D loader block to both `~/.bashrc` and `~/.zshrc` if missing. `.zshrc` also sources `.bashrc`.
 - **Test in a new terminal** after deploying. There is no test suite — verification is interactive (open a new shell, run the command).
 - **Reload current shell**: `re` (alias).
 - **Shell compatibility**: every `.sh` must work under both Bash and Zsh. Use `$CURRENT_SHELL` guards where behavior diverges.
@@ -25,7 +25,7 @@ Third-party projects register under `~/.shell.d/apps/<name>/` with a `manifest.j
 ## Key entry points
 
 - `core/app-loader.sh` — scans `~/.shell.d/apps/` and defines the `apps` registry command.
-- `core/theme.sh` + `core/theme_colors.sh` — prompt/theme. Theme switching is exposed via `ter theme` (see `user/ter_cmd.sh`); themes are baked into `.tmux.conf` and swapped by rewriting both `~/.tmux.conf` and `~/ter/.tmux.conf`.
+- `core/theme.sh` + `core/theme_colors.sh` — prompt/theme. Theme switching is exposed via `ter theme` (see `user/ter_cmd.sh`); themes are baked into `.tmux.conf` and swapped by rewriting `~/ter/.tmux.conf` (the runtime `~/.tmux.conf` is a symlink to it; both are written only if the symlink is missing).
 - `user/aliases.sh` — base aliases plus the custom `cd()` function that special-cases `cd ws` / `cd dl`.
 - `user/optimize.py` + `user/optimize.sh` — background stability engine. `user/z-run.sh` runs the compact one-line status on every interactive startup.
 - `user/adb_utils.sh` + `user/adb-audit.py` + `user/adb-manage.py` + `user/adb_common.py` — ADB-over-WiFi tooling. `adb_common.py` is the shared Python helper for the two CLIs.
@@ -41,11 +41,11 @@ Third-party projects register under `~/.shell.d/apps/<name>/` with a `manifest.j
 | `~/.termux/termux.properties` | `install.sh` |
 | `~/.tmux.conf` | `install.sh` and `ter theme` |
 | `/data/data/com.termux/files/usr/etc/motd` | `install.sh` (only if writable) |
-| `~/.bashrc` | `install.sh` (appends loader once) |
+| `~/.bashrc`, `~/.zshrc` | `install.sh` (appends guarded loader once per file) |
 
 ## Conventions worth knowing
 
 - No build step, no linter, no tests configured. "Correct" = sources cleanly in a fresh Bash and Zsh shell and the documented command works.
 - Python utilities (`optimize.py`, `adb-*.py`, `make_motd.py`) are invoked from shell wrappers; they target the system `python3` available in Termux.
-- `~/ter/.tmux.conf` and `~/.tmux.conf` must be kept in sync — `ter theme` writes both; manual edits should too.
+- `~/.tmux.conf` is a symlink to `~/ter/.tmux.conf` (created by `install.sh`), so editing the repo file is enough; `ter theme` writes both only when the symlink is missing.
 - See `DEVELOPMENT.md` for version history and `docs/cli_manual.md` for the full user-facing command reference.
