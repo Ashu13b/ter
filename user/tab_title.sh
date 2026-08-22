@@ -271,11 +271,11 @@ _ter_preexec_title() {
             return
             ;;
         # AI Coding Agents & LLM CLIs
-        # 🤖 marker makes agent-hijacked tabs instantly distinguishable from
-        # plain folder tabs (agents that overwrite titles get re-asserted by
-        # the watch loop with this same format).
+        # The ✦ name ✦ styling makes agent-hijacked tabs instantly
+        # distinguishable from plain folder tabs (agents that overwrite titles
+        # get re-asserted by the watch loop with this same format).
         agy|codex|claude|aider|gemini|aichat|ai|opendevin|oc|opencode)
-            local a_title="${icon}/[🤖${cmd_name}]/${folder}"
+            local a_title="${icon} ✦ ${cmd_name} ✦ /${folder}"
             _ter_set_title "${a_title}"
             _ter_start_title_watch "${a_title}"
             return

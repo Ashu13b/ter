@@ -378,7 +378,7 @@ check_tab_title() {
     fi
 
     _ter_preexec_title "FOO=1 bar=2 claude"
-    if [ "$captured" != "📱/[🤖claude]/ter" ]; then
+    if [ "$captured" != "📱 ✦ claude ✦ /ter" ]; then
         fail "tab_title env prefix parsing"
         rm -rf "$test_home"
         return
@@ -468,14 +468,14 @@ check_tab_title() {
     fi
 
     _ter_preexec_title "oc"
-    if [ "$captured" != "📱/[🤖oc]/ter" ]; then
+    if [ "$captured" != "📱 ✦ oc ✦ /ter" ]; then
         fail "tab_title opencode hijack"
         rm -rf "$test_home"
         return
     fi
 
     _ter_preexec_title "opencode run --continue"
-    if [ "$captured" != "📱/[🤖opencode]/ter" ]; then
+    if [ "$captured" != "📱 ✦ opencode ✦ /ter" ]; then
         fail "tab_title opencode arg parsing"
         rm -rf "$test_home"
         return
