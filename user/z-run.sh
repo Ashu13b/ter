@@ -10,6 +10,11 @@ if [ -t 1 ] && [ -z "$TER_STATUS_PRINTED" ]; then
     if [ "$OPTIMIZE_STATUS" != "false" ]; then
         optimize status
     fi
+    # Self-check: surface a silently broken deployment instead of failing quiet.
+    # Cheap `type` lookups only — must never delay the prompt.
+    if ! type ter >/dev/null 2>&1 || ! type apps >/dev/null 2>&1; then
+        echo -e "\033[0;33m⚠ TER self-check: core commands missing — run 'bash ~/ter/install.sh'\033[0m" >&2
+    fi
     # Repository drift checks can traverse thousands of files and block a new
     # prompt for seconds. Keep them explicit via `ter doctor`.
 fi
