@@ -347,17 +347,17 @@ check_tab_title() {
     local captured=""
     _ter_set_title() { captured="$1"; }
     _ter_where() { echo "phone"; }
-    _ter_short_pwd() { echo "ter"; }
+    _ter_short_pwd() { echo "…ter"; }
 
     _ter_preexec_title "   adb devices"
-    if [ "$captured" != "📱/adb:devices/ter" ]; then
+    if [ "$captured" != "📱/adb:devices/…ter" ]; then
         fail "tab_title adb single subcommand parsing"
         rm -rf "$test_home"
         return
     fi
 
     _ter_preexec_title "adb -s 192.168.1.5:5555 shell"
-    if [ "$captured" != "📱/adb:shell/ter" ]; then
+    if [ "$captured" != "📱/adb:shell/…ter" ]; then
         fail "tab_title adb options parsing"
         rm -rf "$test_home"
         return
@@ -378,7 +378,7 @@ check_tab_title() {
     fi
 
     _ter_preexec_title "FOO=1 bar=2 claude"
-    if [ "$captured" != "✦ claude ✦ 📱/ter" ]; then
+    if [ "$captured" != "✦ claude ✦ 📱/…ter" ]; then
         fail "tab_title env prefix parsing"
         rm -rf "$test_home"
         return
@@ -403,7 +403,7 @@ check_tab_title() {
 
     # Generic command with arguments containing equals sign
     _ter_preexec_title "git config user.email=foo@bar.com"
-    if [ "$captured" != "📱/git/ter" ]; then
+    if [ "$captured" != "📱/git/…ter" ]; then
         fail "tab_title command with equals argument parsing"
         rm -rf "$test_home"
         return
@@ -419,7 +419,7 @@ check_tab_title() {
 
     # Wrapper with CLI flags
     _ter_preexec_title "sudo -u postgres psql"
-    if [ "$captured" != "📱/psql/ter" ]; then
+    if [ "$captured" != "📱/psql/…ter" ]; then
         fail "tab_title sudo with option argument parsing"
         rm -rf "$test_home"
         return
@@ -447,14 +447,14 @@ check_tab_title() {
     fi
 
     _ter_preexec_title "sudo --user=postgres psql"
-    if [ "$captured" != "📱/psql/ter" ]; then
+    if [ "$captured" != "📱/psql/…ter" ]; then
         fail "tab_title sudo with long option equals parsing"
         rm -rf "$test_home"
         return
     fi
 
     _ter_preexec_title "sudo --user postgres psql"
-    if [ "$captured" != "📱/psql/ter" ]; then
+    if [ "$captured" != "📱/psql/…ter" ]; then
         fail "tab_title sudo with long option arg parsing"
         rm -rf "$test_home"
         return
@@ -468,14 +468,14 @@ check_tab_title() {
     fi
 
     _ter_preexec_title "oc"
-    if [ "$captured" != "✦ oc ✦ 📱/ter" ]; then
+    if [ "$captured" != "✦ oc ✦ 📱/…ter" ]; then
         fail "tab_title opencode hijack"
         rm -rf "$test_home"
         return
     fi
 
     _ter_preexec_title "opencode run --continue"
-    if [ "$captured" != "✦ opencode ✦ 📱/ter" ]; then
+    if [ "$captured" != "✦ opencode ✦ 📱/…ter" ]; then
         fail "tab_title opencode arg parsing"
         rm -rf "$test_home"
         return

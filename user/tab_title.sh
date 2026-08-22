@@ -142,6 +142,8 @@ _ter_short_pwd() {
     local cur="${pwd_val##*/}"
     [ -z "$cur" ] && cur="root"
     [ "$cur" = "files" ] && cur="~"
+    # Ellipsis signals there is more path above this folder.
+    [ "$cur" != "~" ] && cur="…${cur}"
     echo "$cur"
 }
 
