@@ -16,7 +16,7 @@ fail() {
 
 check_syntax() {
     local f
-    for f in "$REPO"/install.sh "$REPO"/bootstrap.sh "$REPO"/smoke.sh "$REPO"/core/*.sh "$REPO"/network/*.sh "$REPO"/user/*.sh; do
+    for f in "$REPO"/install.sh "$REPO"/bootstrap.sh "$REPO"/smoke.sh "$REPO"/core/*.sh "$REPO"/network/*.sh "$REPO"/user/*.sh "$REPO"/extras/*.sh; do
         bash -n "$f" || fail "bash syntax: ${f#$REPO/}"
     done
     for f in "$REPO"/make_motd.py "$REPO"/user/*.py; do
