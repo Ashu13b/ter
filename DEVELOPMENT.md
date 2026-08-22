@@ -124,7 +124,7 @@ These redundant aliases were cleaned up:
 
 ---
 
-## Recent Changes (v1.4 → unreleased)
+## Recent Changes (v1.4 → v1.5)
 
 ### Installer hardening
 - `install.sh` now **normalizes stale-but-guarded loader blocks**: rc files

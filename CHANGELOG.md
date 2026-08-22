@@ -3,7 +3,7 @@
 All notable changes to TER are documented here. Older history lives in
 `DEVELOPMENT.md` for context (recent v1.0→v1.1→v1.2 walkthrough).
 
-## [Unreleased]
+## [1.5] — 2026-08-22
 
 ### Added
 - `ter theme next` / `rotate` — cycles through palettes with wrap-around;

@@ -1,4 +1,4 @@
-# 🌟 TER: Termux Custom Environment (v1.4)
+# 🌟 TER: Termux Custom Environment (v1.5)
 
 TER is a portable, independent Termux environment configuration repository. It installs a modular shell structure, custom keyboard layout, and a modular app-registration system. It works completely standalone or can be integrated with other projects (like NEXUS) via the registry system.
 

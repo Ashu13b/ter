@@ -1,6 +1,6 @@
 {
     "name": "TER",
-    "version": "1.4",
+    "version": "1.5",
     "description": "Termux Custom Environment",
     "command_groups": {
         "SYSTEM": ["re", "up", "cls", "ter (info|doctor|update|sync|snapshot|wizard|theme|shortcut|perms)"],
