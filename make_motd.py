@@ -1,4 +1,5 @@
 import os
+import shutil
 
 def main():
     GRAY = "\x1b[38;5;239m"
@@ -48,12 +49,15 @@ def main():
     
     out.append(f"{GRAY}╰─────────────────────────────────────────────────────────────────╯{RESET}")
     
-    motd_path = "/data/data/com.termux/files/home/ter/motd"
+    motd_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "motd")
     with open(motd_path, "w") as f:
         f.write("\n".join(out) + "\n")
-    
+
     sys_motd = "/data/data/com.termux/files/usr/etc/motd"
-    os.system(f"cp {motd_path} {sys_motd}")
+    try:
+        shutil.copy(motd_path, sys_motd)
+    except OSError:
+        pass  # not writable (or not on Termux) — repo copy is still updated
     print("MOTD generated successfully.")
 
 if __name__ == "__main__":
