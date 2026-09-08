@@ -51,12 +51,27 @@ def main():
     # exist when the NEXUS app is registered under ~/.shell.d/apps/.
     if os.path.isdir(os.path.expanduser("~/.shell.d/apps/nexus")):
         h3 = "[ NEXUS ]"
-        col3 = [
-            ("watch", "Monitor"),
-            ("portal", "Web GUI"),
-            ("cld2net", "Cloud Tnl"),
-            ("lcl2net", "Local Tnl"),
-        ]
+        # Read commands dynamically from NEXUS manifest
+        _nexus_cmd_labels = {
+            "watch": "Monitor", "portal": "Web GUI", "dev": "Dev SSH",
+            "cld2net": "Cloud Tnl", "lcl2net": "Local Tnl", "cld2lcl": "Cld→Lcl",
+            "ncd": "Nav SSH", "nx": "Engine",
+        }
+        col3 = []
+        try:
+            mf = os.path.expanduser("~/.shell.d/apps/nexus/manifest.json")
+            with open(mf) as _f:
+                cmds = json.load(_f).get("commands", [])
+            for c in cmds:
+                if c in _nexus_cmd_labels and len(col3) < 4:
+                    col3.append((c, _nexus_cmd_labels[c]))
+        except (OSError, ValueError):
+            pass
+        if len(col3) < 4:
+            for fallback in [("watch", "Monitor"), ("portal", "Web GUI"),
+                             ("dev", "Dev SSH"), ("cld2net", "Cloud Tnl")]:
+                if fallback not in col3 and len(col3) < 4:
+                    col3.append(fallback)
     else:
         h3 = "[ MORE TOOLS ]"
         col3 = [

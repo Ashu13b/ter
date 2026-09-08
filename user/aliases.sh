@@ -27,8 +27,7 @@ get_lan_ip() {
 
 # ── Project Shortcuts ──
 alias kocr-app='cd ~/kaggle-ocr'; alias kocr-res='cd ~/kaggle-ocr/results'
-alias nx-portal='(sleep 1.5 && termux-open http://127.0.0.1:19080 >/dev/null 2>&1) & python3 ~/nexus/nexus.py portal'
-alias nx-watch='python3 ~/nexus/nexus.py watch'
+# (NEXUS commands like watch/portal are provided by ~/.shell.d/apps/nexus/aliases.sh)
 
 # ── Fix/Kill ──
 alias kill-all-bg='pkill -u $(id -u)'; alias fix-termux='termux-reload-settings && reset'
