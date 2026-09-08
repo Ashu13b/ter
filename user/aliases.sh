@@ -14,7 +14,7 @@ cd() {
 alias ..='cd ..'; alias ...='cd ../..'
 
 # ── Package Management ──
-alias up='pkg update && pkg upgrade -y'; alias re='[ -n "$ZSH_VERSION" ] && source ~/.zshrc || source ~/.bashrc'
+alias up='pkg update && pkg upgrade -y'; alias re='unset TER_LOADED_PID; [ -n "$ZSH_VERSION" ] && source ~/.zshrc || source ~/.bashrc'
 
 # ── Utility ──
 alias cls='clear'
