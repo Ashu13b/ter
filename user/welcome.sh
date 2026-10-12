@@ -47,9 +47,17 @@ welcome() {
             _name=$(jq -r '.name // "unknown"' "$_mf" 2>/dev/null)
             _ver=$(jq -r '.version // ""' "$_mf" 2>/dev/null)
             _desc=$(jq -r '.description // ""' "$_mf" 2>/dev/null)
-            _cmds=$(jq -r '.commands // [] | join("  ")' "$_mf" 2>/dev/null)
             printf "  ${C_YELLOW}%s${C_RESET} ${C_DIM}v%s${C_RESET} — ${C_DIM}%s${C_RESET}\n" "$_name" "$_ver" "$_desc"
-            [ -n "$_cmds" ] && printf "    ${C_GREEN}%s${C_RESET}\n" "$_cmds"
+            if jq -e '.command_groups' "$_mf" >/dev/null 2>&1; then
+                while IFS=$'\t' read -r _grp _grp_cmds; do
+                    [ -z "$_grp" ] && continue
+                    printf "    ${C_CYAN}%-10s${C_RESET} %s\n" "$_grp" "$_grp_cmds"
+                done < <(jq -r '.command_groups // {} | to_entries[] | "\(.key)\t\(.value | join("  "))"' "$_mf" 2>/dev/null)
+                unset _grp _grp_cmds
+            else
+                _cmds=$(jq -r '.commands // [] | join("  ")' "$_mf" 2>/dev/null)
+                [ -n "$_cmds" ] && printf "    ${C_GREEN}%s${C_RESET}\n" "$_cmds"
+            fi
         done
         unset _mf _name _ver _desc _cmds
     fi
