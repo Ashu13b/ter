@@ -1,4 +1,4 @@
-import subprocess, sys, re, os, json, time
+import subprocess, sys, re, os, json, time, importlib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from adb_common import get_adb_device, run_adb as _run_adb
 
@@ -11,8 +11,402 @@ def make_link(url, text):
 def run_adb(args, device=None):
     return _run_adb(args, device=device)
 
+def ensure_adb():
+    dev = get_adb_device()
+    if dev:
+        return dev
+    # Try connecting via adbcon -c
+    subprocess.run(
+        ["bash", "-c", "source ~/.shell.d/network/adb_connect.sh 2>/dev/null || source \"$HOME/ter/network/adb_connect.sh\"; adbcon -c"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL
+    )
+    return get_adb_device()
+
+def get_adb_manage():
+    try:
+        return importlib.import_module("adb-manage")
+    except Exception:
+        return None
+
+def resolve_package(query, pkgs=None):
+    adb_m = get_adb_manage()
+    if not adb_m:
+        return None
+    if pkgs is None:
+        pkgs = adb_m.get_third_party_packages()
+    if query in pkgs:
+        return query
+    matches = [p for p in pkgs if query.lower() in p.lower()]
+    if len(matches) == 1:
+        return matches[0]
+    elif len(matches) > 1:
+        exact_seg = [p for p in matches if p.split(".")[-1].lower() == query.lower()]
+        if len(exact_seg) == 1:
+            return exact_seg[0]
+        return matches
+
+    # Fallback to all installed packages (including preinstalled browsers like Chrome)
+    all_pkgs = adb_m.get_all_packages() if hasattr(adb_m, "get_all_packages") else []
+    if query in all_pkgs:
+        return query
+    all_matches = [p for p in all_pkgs if query.lower() in p.lower()]
+    if len(all_matches) == 1:
+        return all_matches[0]
+    elif len(all_matches) > 1:
+        exact_seg = [p for p in all_matches if p.split(".")[-1].lower() == query.lower()]
+        if len(exact_seg) == 1:
+            return exact_seg[0]
+        return all_matches
+    return None
+
+def allow_apps(queries):
+    dev = ensure_adb()
+    if not dev:
+        print("\033[1;31m❌ ADB is offline. Run 'adbcon' first.\033[0m")
+        return
+    adb_m = get_adb_manage()
+    pkgs = adb_m.get_third_party_packages() if adb_m else []
+    for q in queries:
+        target = resolve_package(q, pkgs)
+        if not target:
+            print(f"❌ Could not find installed app matching '{q}'.")
+            continue
+        if isinstance(target, list):
+            print(f"⚠️  Multiple apps match '{q}': {', '.join(target)}. Please be more specific.")
+            continue
+        print(f"\n🚀 Allowing \033[1;32m{target}\033[0m to run freely in background...")
+        run_adb(["shell", "dumpsys deviceidle whitelist", f"+{target}"])
+        run_adb(["shell", "am set-standby-bucket", target, "active"])
+        run_adb(["shell", "pm enable", target])
+        print(f"  ✅ Added to Battery Optimization whitelist (Doze bypass)")
+        print(f"  ✅ Standby bucket set to Active (Unrestricted)")
+
+def restrict_apps(queries):
+    dev = ensure_adb()
+    if not dev:
+        print("\033[1;31m❌ ADB is offline. Run 'adbcon' first.\033[0m")
+        return
+    adb_m = get_adb_manage()
+    pkgs = adb_m.get_third_party_packages() if adb_m else []
+    for q in queries:
+        target = resolve_package(q, pkgs)
+        if not target:
+            print(f"❌ Could not find installed app matching '{q}'.")
+            continue
+        if isinstance(target, list):
+            print(f"⚠️  Multiple apps match '{q}': {', '.join(target)}. Please be more specific.")
+            continue
+        print(f"\n❄️  Restricting \033[1;33m{target}\033[0m from background RAM & battery usage...")
+        run_adb(["shell", "dumpsys deviceidle whitelist", f"-{target}"])
+        run_adb(["shell", "am set-standby-bucket", target, "restricted"])
+        print(f"  ✅ Removed from Battery Optimization whitelist")
+        print(f"  ✅ Standby bucket set to Restricted (Deep Sleep when idle)")
+
+def freeze_apps(queries):
+    dev = ensure_adb()
+    if not dev:
+        print("\033[1;31m❌ ADB is offline. Run 'adbcon' first.\033[0m")
+        return
+    adb_m = get_adb_manage()
+    pkgs = adb_m.get_third_party_packages() if adb_m else []
+    for q in queries:
+        target = resolve_package(q, pkgs)
+        if not target:
+            print(f"❌ Could not find installed app matching '{q}'.")
+            continue
+        if isinstance(target, list):
+            print(f"⚠️  Multiple apps match '{q}': {', '.join(target)}. Please be more specific.")
+            continue
+        if adb_m:
+            adb_m.freeze_app(target)
+        else:
+            run_adb(["shell", "pm disable-user", "--user", "0", target])
+
+def unfreeze_apps(queries):
+    dev = ensure_adb()
+    if not dev:
+        print("\033[1;31m❌ ADB is offline. Run 'adbcon' first.\033[0m")
+        return
+    adb_m = get_adb_manage()
+    pkgs = adb_m.get_third_party_packages() if adb_m else []
+    for q in queries:
+        target = resolve_package(q, pkgs)
+        if not target:
+            print(f"❌ Could not find installed app matching '{q}'.")
+            continue
+        if isinstance(target, list):
+            print(f"⚠️  Multiple apps match '{q}': {', '.join(target)}. Please be more specific.")
+            continue
+        if adb_m:
+            adb_m.unfreeze_app(target)
+        else:
+            run_adb(["shell", "pm enable", target])
+
+def run_auto_optimize():
+    dev = ensure_adb()
+    if not dev:
+        print("\033[1;31m❌ ADB is offline. Run 'adbcon' first.\033[0m")
+        return
+    adb_m = get_adb_manage()
+    if adb_m and hasattr(adb_m, "auto_optimize"):
+        adb_m.auto_optimize()
+    else:
+        print("❌ adb-manage module could not be loaded.")
+
+def list_app_states():
+    dev = ensure_adb()
+    if not dev:
+        print("\033[1;31m❌ ADB is offline. Run 'adbcon' first.\033[0m")
+        return
+    adb_m = get_adb_manage()
+    if not adb_m:
+        print("❌ adb-manage module not found.")
+        return
+    packages = adb_m.get_third_party_packages()
+    stdout_wl, _, _ = run_adb(["shell", "dumpsys deviceidle whitelist"])
+    whitelisted_set = set()
+    for line in stdout_wl.splitlines():
+        parts = line.strip().split(',')
+        if len(parts) >= 2:
+            whitelisted_set.add(parts[1])
+        elif line.strip():
+            whitelisted_set.add(line.strip())
+
+    print("\n\033[1;35m┌────────────────────────────────────────────────────────────────────────┐\033[0m")
+    print("\033[1;35m│\033[0m                 📱 \033[1mTHIRD-PARTY APP BACKGROUND STATUS\033[0m                   \033[1;35m│\033[0m")
+    print("\033[1;35m├────────────────────────────────────────────────────────────────────────┤\033[0m")
+    print("\033[1;35m│\033[0m  \033[1mPACKAGE\033[0m                               \033[1mSTANDBY\033[0m       \033[1mBATTERY DOZE\033[0m     \033[1;35m│\033[0m")
+    print("\033[1;35m├────────────────────────────────────────────────────────────────────────┤\033[0m")
+
+    for pkg in packages:
+        bucket_out, _, _ = run_adb(["shell", "am get-standby-bucket", pkg])
+        bucket_out = bucket_out.strip()
+        if "10" in bucket_out or "active" in bucket_out.lower() or bucket_out == "5":
+            b_desc = "\033[1;32mActive\033[0m    "
+        elif "20" in bucket_out or "working" in bucket_out.lower():
+            b_desc = "\033[36mWorking\033[0m   "
+        elif "30" in bucket_out or "frequent" in bucket_out.lower():
+            b_desc = "\033[33mFrequent\033[0m  "
+        elif "40" in bucket_out or "rare" in bucket_out.lower():
+            b_desc = "\033[33mRare\033[0m      "
+        elif "45" in bucket_out or "restricted" in bucket_out.lower():
+            b_desc = "\033[1;31mRestricted\033[0m"
+        else:
+            b_desc = f"{bucket_out:<10}"
+
+        is_wl = pkg in whitelisted_set or any(pkg in line for line in stdout_wl.splitlines())
+        wl_desc = "\033[1;32mWhitelisted\033[0m" if is_wl else "\033[90mOptimized\033[0m  "
+
+        pkg_short = pkg if len(pkg) <= 36 else pkg[:33] + "..."
+        print(f"\033[1;35m│\033[0m  {pkg_short:<36}  {b_desc}   {wl_desc}      \033[1;35m│\033[0m")
+
+    print("\033[1;35m└────────────────────────────────────────────────────────────────────────┘\033[0m")
+    print("\n\033[1mCommands:\033[0m")
+    print("  • \033[1;32moptimize allow <app>\033[0m     Allow app to run freely in background (Active + Doze Whitelist)")
+    print("  • \033[1;33moptimize restrict <app>\033[0m  Put app in deep sleep when idle (Restricted)")
+    print("  • \033[1;36moptimize tier\033[0m            Smart usage-based tiering (Speed compile VIP apps, Deep sleep bloat)")
+    print("  • \033[1;36moptimize auto\033[0m            Auto-restrict heavy bloatware while protecting chats/tools")
+    print("  • \033[1;31moptimize purge\033[0m           Kill all non-essential background processes and reclaim RAM\n")
+
+def adaptive_tiered_optimization(dry_run=False):
+    dev = ensure_adb()
+    if not dev:
+        print("\033[1;31m❌ ADB is offline. Run 'adbcon' first.\033[0m")
+        return
+
+    print("\n\033[1;35m┌────────────────────────────────────────────────────────────────────────┐\033[0m")
+    print("\033[1;35m│\033[0m            🧠 \033[1mADAPTIVE USAGE-BASED TIER OPTIMIZATION ENGINE\033[0m           \033[1;35m│\033[0m")
+    print("\033[1;35m└────────────────────────────────────────────────────────────────────────┘\033[0m")
+    print("⏳ Analyzing real-world interaction frequency from Android usage engine...")
+
+    # Query last 24h usage events
+    out_usage, _, code = run_adb(["shell", "dumpsys usagestats"])
+    usage_counts = {}
+    if code == 0:
+        for line in out_usage.splitlines():
+            if "ACTIVITY_RESUMED" in line and "package=" in line:
+                m = re.search(r"package=([a-zA-Z0-9._]+)", line)
+                if m:
+                    p = m.group(1)
+                    usage_counts[p] = usage_counts.get(p, 0) + 1
+
+    adb_m = get_adb_manage()
+    pkgs = adb_m.get_third_party_packages() if adb_m else []
+
+    protected = {
+        "com.termux", "com.termux.api", "com.termux.widget",
+        "com.whatsapp", "org.kaggle.platform",
+        "dev.expeei.literm", "org.telegram.messenger",
+        "org.openscrape.browser", "com.android.chrome",
+        "com.google.android.inputmethod.latin", "org.pocketworkstation.pckeyboard"
+    }
+
+    tier_1_speed = []   # High usage: Speed-profile AOT compiled + Active Standby
+    tier_2_normal = []  # Moderate usage: Working set
+    tier_3_sleep = []   # Low usage / bloat: Restricted deep sleep (Bucket 45)
+
+    for p in pkgs:
+        cnt = usage_counts.get(p, 0)
+        if p in protected or cnt >= 15:
+            tier_1_speed.append((p, cnt))
+        elif cnt >= 3:
+            tier_2_normal.append((p, cnt))
+        else:
+            tier_3_sleep.append((p, cnt))
+
+    # Also include essential system packages in Tier 1 if frequently used
+    for p in ["com.android.chrome", "com.termux"]:
+        cnt = usage_counts.get(p, 0)
+        if not any(item[0] == p for item in tier_1_speed):
+            tier_1_speed.append((p, cnt))
+
+    print(f"\n\033[1;32m⚡ TIER 1: HIGH-USAGE SPEED VIP ({len(tier_1_speed)} apps)\033[0m")
+    print("  Policy: Ahead-of-Time (AOT) speed compilation + Unrestricted Active Standby")
+    for p, c in sorted(tier_1_speed, key=lambda x: x[1], reverse=True):
+        print(f"    • {p:<38} ({c} launches in 24h)")
+        if not dry_run:
+            run_adb(["shell", "cmd", "package", "compile", "-m", "speed-profile", p])
+            run_adb(["shell", "am", "set-standby-bucket", p, "active"])
+            run_adb(["shell", "dumpsys", "deviceidle", "whitelist", f"+{p}"])
+
+    print(f"\n\033[1;36m🔄 TIER 2: BALANCED / MODERATE ({len(tier_2_normal)} apps)\033[0m")
+    print("  Policy: Working Set Standby (Bucket 20) — Normal speed, gentle idle savings")
+    for p, c in sorted(tier_2_normal, key=lambda x: x[1], reverse=True):
+        print(f"    • {p:<38} ({c} launches in 24h)")
+        if not dry_run:
+            run_adb(["shell", "am", "set-standby-bucket", p, "20"])
+
+    print(f"\n\033[1;31m❄️  TIER 3: RARE / DEEP SLEEP ({len(tier_3_sleep)} apps)\033[0m")
+    print("  Policy: Restricted Standby (Bucket 45) — 0 background CPU/RAM when idle")
+    for p, c in sorted(tier_3_sleep, key=lambda x: x[1], reverse=True)[:15]:
+        print(f"    • {p:<38} ({c} launches in 24h)")
+        if not dry_run:
+            run_adb(["shell", "am", "set-standby-bucket", p, "restricted"])
+            run_adb(["shell", "cmd", "deviceidle", "whitelist", f"-{p}"])
+    if len(tier_3_sleep) > 15:
+        print(f"    • ...and {len(tier_3_sleep) - 15} more idle apps restricted.")
+        if not dry_run:
+            for p, _ in tier_3_sleep[15:]:
+                run_adb(["shell", "am", "set-standby-bucket", p, "restricted"])
+                run_adb(["shell", "cmd", "deviceidle", "whitelist", f"-{p}"])
+
+    if not dry_run:
+        # Sweep caches
+        run_adb(["shell", "am", "kill-all"])
+        print("\n\033[1;32m✅ Adaptive Tiering Applied Successfully!\033[0m")
+        print("  • Primary daily tools are compiled for native maximum speed.")
+        print("  • Rarely used apps are locked into deep sleep until you open them.")
+    print("────────────────────────────────────────────────────────────────────────\n")
+
+def purge_background_apps():
+    dev = ensure_adb()
+    if not dev:
+        print("\033[1;31m❌ ADB is offline. Run 'adbcon' first.\033[0m")
+        return
+    adb_m = get_adb_manage()
+    pkgs = set(adb_m.get_third_party_packages()) if adb_m else set()
+    protected = {
+        "com.termux", "com.termux.api", "com.termux.widget",
+        "com.whatsapp", "org.kaggle.platform",
+        "dev.expeei.literm", "org.telegram.messenger",
+        "org.openscrape.browser", "com.android.chrome", "com.heytap.browser"
+    }
+    protected.update({"com.google.android.inputmethod.latin", "org.pocketworkstation.pckeyboard"})
+
+    # Heavy non-essential system apps safe to kill
+    killable_sys = {
+        "com.android.vending",
+        "com.google.android.apps.wellbeing",
+        "com.google.android.googlequicksearchbox",
+        "com.google.android.youtube",
+        "com.google.android.gm"
+    }
+
+    # Measure initial RAM from /proc/meminfo
+    def get_mem_available_kb():
+        try:
+            with open('/proc/meminfo', 'r') as f:
+                for line in f:
+                    if line.startswith('MemAvailable:'):
+                        return int(line.split()[1])
+        except Exception:
+            pass
+        return 0
+
+    mem_before_kb = get_mem_available_kb()
+
+    # Query running processes
+    out, _, code = run_adb(["shell", "ps", "-A", "-o", "USER,PID,%CPU,%MEM,RSS,NAME"])
+    if code != 0:
+        print("❌ Could not query process list.")
+        return
+
+    # Track killed apps and aggregate RSS per package
+    app_reclaimed_kb = {}
+    proc_count_per_app = {}
+    seen_killed = set()
+
+    for line in out.splitlines()[1:]:
+        parts = line.split()
+        if len(parts) >= 6:
+            full_name = parts[5]
+            base_pkg = full_name.split(":")[0]
+            rss = int(parts[4]) if parts[4].isdigit() else 0
+
+            if (base_pkg in pkgs or base_pkg in killable_sys or full_name in killable_sys) and base_pkg not in protected:
+                if base_pkg not in seen_killed:
+                    if base_pkg in pkgs:
+                        run_adb(["shell", "am", "force-stop", base_pkg])
+                        # Lock into restricted standby bucket so Android does not wake it back up
+                        run_adb(["shell", "am", "set-standby-bucket", base_pkg, "restricted"])
+                        run_adb(["shell", "cmd", "deviceidle", "whitelist", f"-{base_pkg}"])
+                    else:
+                        run_adb(["shell", "am", "kill", base_pkg])
+                    seen_killed.add(base_pkg)
+
+                app_reclaimed_kb[base_pkg] = app_reclaimed_kb.get(base_pkg, 0) + rss
+                proc_count_per_app[base_pkg] = proc_count_per_app.get(base_pkg, 0) + 1
+
+    # Broadcast system-wide cache reclaim
+    run_adb(["shell", "am", "kill-all"])
+
+    import time
+    time.sleep(0.5)
+    mem_after_kb = get_mem_available_kb()
+    real_delta_mb = (mem_after_kb - mem_before_kb) / 1024.0 if (mem_after_kb and mem_before_kb) else 0
+
+    total_est_kb = sum(app_reclaimed_kb.values())
+    total_est_mb = total_est_kb / 1024.0
+
+    print("\n\033[1;35m┌────────────────────────────────────────────────────────────────────────┐\033[0m")
+    print("\033[1;35m│\033[0m                       ⚡ \033[1mABSOLUTE PURGE SUMMARY\033[0m                         \033[1;35m│\033[0m")
+    print("\033[1;35m├────────────────────────────────────────────────────────────────────────┤\033[0m")
+    if app_reclaimed_kb:
+        print(f"\033[1;35m│\033[0m  \033[1m{'Killed App / Package':<40} {'Processes':<11} {'RAM Reclaimed':<15}\033[0m \033[1;35m│\033[0m")
+        print("\033[1;35m├────────────────────────────────────────────────────────────────────────┤\033[0m")
+        # Sort by most RAM reclaimed
+        sorted_apps = sorted(app_reclaimed_kb.items(), key=lambda x: x[1], reverse=True)
+        for pkg, kb in sorted_apps:
+            p_cnt = proc_count_per_app.get(pkg, 1)
+            mb = kb / 1024.0
+            pkg_disp = pkg if len(pkg) <= 38 else pkg[:35] + "..."
+            ram_disp = f"~{mb:.1f} MB"
+            print(f"\033[1;35m│\033[0m  {pkg_disp:<40} {p_cnt:<11} \033[1;32m{ram_disp:<15}\033[0m \033[1;35m│\033[0m")
+    else:
+        print("\033[1;35m│\033[0m  No non-essential apps were running in background.                    \033[1;35m│\033[0m")
+    print("\033[1;35m├────────────────────────────────────────────────────────────────────────┤\033[0m")
+    print(f"\033[1;35m│\033[0m  Total Target Apps Terminated: \033[1;32m{len(app_reclaimed_kb)}\033[0m ({sum(proc_count_per_app.values())} processes)                    \033[1;35m│\033[0m")
+    print(f"\033[1;35m│\033[0m  Total Process RAM Freed:      \033[1;32m~{total_est_mb:.1f} MB\033[0m                                 \033[1;35m│\033[0m")
+    if real_delta_mb > 0:
+        print(f"\033[1;35m│\033[0m  Available System RAM Gain:    \033[1;32m+{real_delta_mb:.1f} MB\033[0m                                 \033[1;35m│\033[0m")
+    if mem_after_kb > 0:
+        print(f"\033[1;35m│\033[0m  Current Available RAM:        \033[1;36m{mem_after_kb / 1024.0 / 1024.0:.2f} GB\033[0m                                 \033[1;35m│\033[0m")
+    print("\033[1;35m├────────────────────────────────────────────────────────────────────────┤\033[0m")
+    print("\033[1;35m│\033[0m  🛡️  Safe: Termux, WhatsApp, Kaggle, LiteRM, Browser, Telegram, Keys    \033[1;35m│\033[0m")
+    print("\033[1;35m└────────────────────────────────────────────────────────────────────────┘\033[0m\n")
+
 def get_wake_lock_status(device=None):
-    # Query dumpsys power to see if com.termux holds a wake lock
     stdout, _, _ = run_adb(["shell", "dumpsys power"], device=device)
     in_wake_locks = False
     for line in stdout.splitlines():
@@ -38,11 +432,9 @@ def check_phantom_processes(device=None):
     enabled = stdout_enabled.strip().lower() != "false"
     max_val = stdout_max.strip()
     
-    # If the monitor is disabled entirely, it is optimized but has no safety restrictions
     if not enabled:
         return True, "NO (DISABLED)"
         
-    # If it is enabled but the ceiling is high (>= 1000), it is optimized with safety headroom
     try:
         if max_val and int(max_val) >= 1000:
             return True, f"SAFE (LIMIT {max_val})"
@@ -77,7 +469,6 @@ def show_status(full=False):
     battery_opt = check_battery_optimization(device=device)
     
     if not full:
-        # Compact one-line startup summary
         wl_s = "\033[1;32m✓\033[0m" if wl else "\033[1;33m✗\033[0m"
         ph_s = "\033[1;32m✓\033[0m" if phantom_opt else "\033[1;31m✗\033[0m"
         bt_s = "\033[1;32m✓\033[0m" if battery_opt else "\033[1;31m✗\033[0m"
@@ -88,7 +479,6 @@ def show_status(full=False):
             print(f"  \033[33m↳ Run \033[1moptimize fix\033[0;33m to optimize\033[0m")
         return
 
-    # Full verbose box
     wl_icon = "🟢" if wl else "🟡"
     wl_raw = "ACTIVE" if wl else "INACTIVE"
     wl_state = f"\033[1;32m{wl_raw}\033[0m" if wl else f"\033[1;33m{wl_raw}\033[0m"
@@ -125,10 +515,72 @@ def show_status(full=False):
         
     print("\033[1;35m└──────────────────────────────────────────────────────────┘\033[0m\n")
 
-def fix_settings():
+def show_device_info():
+    dev = ensure_adb()
+    if not dev:
+        print("\033[1;31m❌ ADB is offline. Run 'adbcon' first.\033[0m")
+        return
+
+    model, _, _ = run_adb(["shell", "getprop", "ro.product.model"])
+    android_ver, _, _ = run_adb(["shell", "getprop", "ro.build.version.release"])
+    battery_info, _, _ = run_adb(["shell", "dumpsys", "battery"])
+
+    level = "?"
+    temp_c = "?"
+    batt_status = "Unknown"
+    for line in battery_info.splitlines():
+        line_s = line.strip()
+        if line_s.startswith("level:"):
+            level = line_s.split(":")[1].strip()
+        elif line_s.startswith("temperature:"):
+            try:
+                temp_raw = int(line_s.split(":")[1].strip())
+                temp_c = f"{temp_raw / 10.0:.1f}"
+            except Exception:
+                pass
+        elif line_s.startswith("status:"):
+            code = line_s.split(":")[1].strip()
+            batt_status = {"2": "Charging", "3": "Discharging", "4": "Not Charging", "5": "Full"}.get(code, "Unknown")
+
+    cpu_load, _, _ = run_adb(["shell", "top", "-b", "-n", "1", "-m", "5"])
+    cpu_lines = []
+    header_found = False
+    for line in cpu_load.splitlines():
+        if "PID" in line and "USER" in line:
+            header_found = True
+            continue
+        if header_found and line.strip():
+            parts = line.split()
+            if len(parts) >= 12:
+                pid = parts[0]
+                cpu_pct = parts[8].replace("[", "").replace("]", "")
+                cmd_name = parts[11]
+                cmd_short = os.path.basename(cmd_name)
+                cpu_lines.append(f"{cmd_short:<26} {cpu_pct:>5}% CPU  (PID {pid})")
+
+    print("\n\033[1;35m┌──────────────────────────────────────────────────────────┐\033[0m")
+    print("\033[1;35m│\033[0m             📱 \033[1mDEVICE SYSTEM METRICS & HEALTH\033[0m            \033[1;35m│\033[0m")
+    print("\033[1;35m├──────────────────────────────────────────────────────────┤\033[0m")
+    print(f"\033[1;35m│\033[0m  Model   : \033[1;33m{model.strip()}\033[0m (Android {android_ver.strip()})")
+    print(f"\033[1;35m│\033[0m  Battery : \033[1;32m{level}%\033[0m | Temp: \033[1;36m{temp_c}°C\033[0m | Status: {batt_status}")
+    print("\033[1;35m├──────────────────────────────────────────────────────────┤\033[0m")
+    print("\033[1;35m│\033[0m  \033[1mTop CPU Processes:\033[0m")
+    if cpu_lines:
+        for cl in cpu_lines[:5]:
+            print(f"\033[1;35m│\033[0m    • {cl}")
+    else:
+        print("\033[1;35m│\033[0m    (No process data returned)")
+    print("\033[1;35m└──────────────────────────────────────────────────────────┘\033[0m\n")
+
+def fix_settings(include_apps=False):
+    dev = ensure_adb()
+    if not dev:
+        print("\033[1;31m❌ ADB is offline. Run 'adbcon' first.\033[0m")
+        return
+
     print("\n⚡ Optimizing Termux background permissions...")
     
-    # 1. Keep monitor on, but raise process limit ceiling to 2048 to prevent runaways while allowing heavy Termux usage
+    # 1. Keep monitor on, but raise process limit ceiling to 2048
     print("  🛠️ Setting Phantom Process limit to 2048...")
     run_adb(["shell", "settings put global settings_enable_monitor_phantom_procs true"])
     run_adb(["shell", "device_config put activity_manager max_phantom_processes 2048"])
@@ -136,8 +588,13 @@ def fix_settings():
     # 2. Whitelist com.termux from deviceidle
     print("  🛠️ Whitelisting Termux from battery optimization...")
     run_adb(["shell", "dumpsys deviceidle whitelist +com.termux"])
+    run_adb(["shell", "am set-standby-bucket com.termux active"])
     
-    print("✅ Done! Running status audit again:")
+    if include_apps:
+        print("\n⚡ Running app background auto-optimization...")
+        run_auto_optimize()
+
+    print("\n✅ Done! Running status audit again:")
     show_status()
 
 def load_tasks():
@@ -181,7 +638,6 @@ def start_task(name, command):
     log_file_name = f"{name}_{timestamp}.log"
     log_path = os.path.join(LOG_DIR, log_file_name)
     
-    # We acquire a lock before command, run command, and release lock
     shell_cmd = f"termux-wake-lock && {command} ; code=$? ; termux-wake-unlock"
     
     try:
@@ -194,7 +650,6 @@ def start_task(name, command):
             start_new_session=True
         )
         
-        # Save task details
         tasks[name] = {
             "pid": proc.pid,
             "command": command,
@@ -270,12 +725,24 @@ def stop_task(name):
     return True
 
 def print_help():
-    print("\033[1;36mTERMUX BACKGROUND STABILITY MANAGER\033[0m")
+    print("\033[1;36mTERMUX BACKGROUND STABILITY & APP OPTIMIZATION MANAGER\033[0m")
     print()
-    print("\033[1mStability:\033[0m")
+    print("\033[1mSystem Stability & Metrics:\033[0m")
     print("  optimize status             Quick audit (compact one-liner)")
     print("  optimize status -f          Full detailed audit with descriptions")
+    print("  optimize info               Show device metrics, battery %, temperature, & top CPU")
     print("  optimize fix                Optimize via ADB (phantom limit → 2048, battery whitelist)")
+    print("  optimize fix --apps         Fix system limits AND auto-optimize background apps")
+    print()
+    print("\033[1mApp Background & Battery Management:\033[0m")
+    print("  optimize allow <app ...>    Allow app(s) to run freely in background (Active + Doze Whitelist)")
+    print("  optimize restrict <app ...> Restrict app(s) to deep sleep to save RAM & battery")
+    print("  optimize freeze <app>       Freeze/disable bloatware completely (0 RAM/battery)")
+    print("  optimize unfreeze <app>     Unfreeze/enable a previously frozen app")
+    print("  optimize tier               Smart usage-based tiering (Speed compile VIP apps, Deep sleep bloat)")
+    print("  optimize auto               Auto-restrict heavy background apps (shopping, food, etc.)")
+    print("  optimize purge              Kill all non-essential background processes & reclaim RAM")
+    print("  optimize apps               List installed third-party apps and background status")
     print()
     print("\033[1mBackground Tasks:\033[0m")
     print("  optimize run <name> <cmd>   Launch command in background with WakeLock & logging")
@@ -284,9 +751,13 @@ def print_help():
     print("  optimize log <name>         Show log path and tail last 20 lines")
     print()
     print("\033[1mExamples:\033[0m")
+    print("  optimize tier")
+    print("  optimize allow whatsapp telegram obsidian kaggle")
+    print("  optimize restrict swiggy flipkart zomato")
+    print("  optimize purge")
+    print("  optimize info")
+    print("  optimize auto")
     print("  optimize run myserver \"python3 -m http.server 8080\"")
-    print("  optimize stop myserver")
-    print("  optimize log myserver")
     print()
 
 def main():
@@ -299,8 +770,67 @@ def main():
     if cmd == "status":
         full = len(args) > 1 and args[1] in ["-f", "--full"]
         show_status(full=full)
+    elif cmd in ["info", "sysinfo", "battery", "temp"]:
+        show_device_info()
     elif cmd == "fix":
-        fix_settings()
+        include_apps = len(args) > 1 and args[1] in ["-a", "--apps"]
+        fix_settings(include_apps=include_apps)
+    elif cmd in ["tier", "tiered", "profile", "adaptive"]:
+        dry_run = len(args) > 1 and args[1] in ["-n", "--dry-run", "dry-run"]
+        adaptive_tiered_optimization(dry_run=dry_run)
+    elif cmd in ["purge", "kill-bg", "clean-bg"]:
+        purge_background_apps()
+    elif cmd in ["allow", "keep"]:
+        if len(args) < 2:
+            print("❌ Error: Missing app name(s).")
+            print("Usage: optimize allow <app1> [app2 ...]")
+            sys.exit(1)
+        allow_apps(args[1:])
+    elif cmd == "restrict":
+        if len(args) < 2:
+            print("❌ Error: Missing app name(s).")
+            print("Usage: optimize restrict <app1> [app2 ...]")
+            sys.exit(1)
+        restrict_apps(args[1:])
+    elif cmd == "freeze":
+        if len(args) < 2:
+            print("❌ Error: Missing app name(s).")
+            print("Usage: optimize freeze <app>")
+            sys.exit(1)
+        freeze_apps(args[1:])
+    elif cmd == "unfreeze":
+        if len(args) < 2:
+            print("❌ Error: Missing app name(s).")
+            print("Usage: optimize unfreeze <app>")
+            sys.exit(1)
+        unfreeze_apps(args[1:])
+    elif cmd == "auto":
+        if len(args) > 1 and args[1] in ["--tier", "--tiered", "tier", "tiered"]:
+            dry_run = len(args) > 2 and args[2] in ["-n", "--dry-run", "dry-run"]
+            adaptive_tiered_optimization(dry_run=dry_run)
+        else:
+            run_auto_optimize()
+    elif cmd == "apps":
+        if len(args) > 1:
+            sub = args[1]
+            if sub in ["tier", "tiered", "profile", "adaptive"]:
+                dry_run = len(args) > 2 and args[2] in ["-n", "--dry-run", "dry-run"]
+                adaptive_tiered_optimization(dry_run=dry_run)
+            elif sub == "auto":
+                run_auto_optimize()
+            elif sub in ["allow", "keep"]:
+                allow_apps(args[2:])
+            elif sub == "restrict":
+                restrict_apps(args[2:])
+            elif sub == "freeze":
+                freeze_apps(args[2:])
+            elif sub == "unfreeze":
+                unfreeze_apps(args[2:])
+            else:
+                print(f"❌ Unknown sub-command: {sub}")
+                print("Usage: optimize apps [tier|auto|allow|restrict|freeze|unfreeze]")
+        else:
+            list_app_states()
     elif cmd == "run":
         if len(args) < 3:
             print("❌ Error: Missing task name or command.")

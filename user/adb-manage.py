@@ -25,6 +25,14 @@ def get_third_party_packages():
             packages.append(line.strip().split(':')[1])
     return sorted(packages)
 
+def get_all_packages():
+    out, _, _ = run_adb(["shell", "pm list packages"])
+    packages = []
+    for line in out.splitlines():
+        if line.strip().startswith("package:"):
+            packages.append(line.strip().split(':')[1])
+    return sorted(packages)
+
 def freeze_app(pkg):
     print(f"❄️ Freezing package {pkg}...")
     stdout, stderr, code = run_adb(["shell", "pm disable-user", "--user", "0", pkg])
@@ -189,7 +197,12 @@ CRITICAL_PATTERNS = [
     r"watch", r"wear", r"fitbit", r"garmin", r"tuya", r"smartlife", r"miband",
     r"clock", r"alarm", r"calendar",
     r"launcher",
-    r"termux"
+    r"termux",
+    r"kaggle",
+    r"literm",
+    r"browser",
+    r"chrome",
+    r"openscrape"
 ]
 
 def classify_package(pkg):
@@ -207,6 +220,10 @@ def classify_package(pkg):
                 return "Calendar"
             elif "launcher" in pattern:
                 return "Launcher"
+            elif any(p in pattern for p in ["kaggle", "termux", "literm"]):
+                return "Developer/Core Tool"
+            elif any(p in pattern for p in ["browser", "chrome", "openscrape"]):
+                return "Web Browser"
             return "System/Core Utility"
     return "Safe to Disable"
 

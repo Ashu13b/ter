@@ -34,6 +34,19 @@ Handles wireless ADB connections over local Wi-Fi, scans for active debugging po
 # Display connection help manual
 adbcon -h
 
+# Check ADB status and loopback diagnostics
+adbcon status
+
+# Connect/lock loopback without launching interactive shell
+adbcon -c
+
+# Connect directly to port (or IP:port)
+adbcon 42587
+adbcon 192.168.1.10:42587
+
+# Direct pairing with 6-digit code
+adbcon pair 37123 123456
+
 # Disconnect active ADB sessions and clean up local ADB server daemons
 adbcon -d
 ```
@@ -50,20 +63,44 @@ Grabs the screen image from the phone, pulls the PNG file locally with a timesta
 adb-screengrab -h
 ```
 
-### 📦 Consolidated App Manager (`adb-manage`)
-Allows optimizing application standby buckets, disabling (freezing) apps to prevent them from running, and pulling/exporting raw APK installer files.
+### ⚡ System Optimizer & RAM Purge (`optimize`)
+Manage background constraints, monitor CPU/battery health, and reclaim RAM:
 ```bash
-# Access the interactive menu dashboard
-adb-manage
+optimize status             # Quick background status audit
+optimize status -f          # Detailed table of limits & locks
+optimize info               # Live device health, battery %, temp & top CPU processes
+optimize purge              # Force-stop background bloat, restrict buckets & reclaim RAM
+optimize tier               # Smart usage-based tiering (Speed compile VIPs, deep sleep bloat)
+optimize allow <app ...>    # Allow app(s) to run freely in background (Active + Doze Whitelist)
+optimize restrict <app ...> # Force app(s) to deep sleep when idle
+optimize auto               # Auto-restrict heavy background apps (shopping, food, etc.)
+optimize apps               # List all installed apps and their background standby status
+```
 
-# Run automated safe background optimization
-adb-manage -o
+### 📦 Unified App Manager & Sideloader (`app`)
+Clean, single interface for APK installations, freezing bloat, and package inspection:
+```bash
+# Sideload APK files (browse ~/Download, fuzzy pick, batch install)
+app install
+app install myapp.apk
+app install -r myapp.apk     # Reinstall while keeping data
 
-# Freeze / Disable a background hogging application
-adb-manage -f <package_name>
+# Freeze / Disable an application completely (0 RAM / CPU)
+app freeze <package_name>
 
-# Unfreeze / Enable an application
-adb-manage -u <package_name>
+# Unfreeze / Re-enable an application
+app unfreeze <package_name>
+
+# List installed packages
+app list                    # 3rd-party apps
+app list -d                 # Frozen / disabled apps only
+app list -a                 # All apps including system
+
+# Extract and pull base APK to current directory
+app export <package_name>
+
+# Launch app directly on device screen
+app open <package_name>
 ```
 
 ### 📦 Smart APK Installer (`adb-apk`)
@@ -131,6 +168,26 @@ optimize status
 
 # Apply background optimizations (raised phantom limits and whitelist exemption)
 optimize fix
+optimize fix --apps
+
+# Adaptive usage-based optimization (AOT speed compiles VIP apps, deep sleeps rare apps)
+optimize tier
+optimize tier --dry-run     # Preview tier categorization without applying
+
+# Allow apps to run freely in background without getting killed (Active + Doze Whitelist)
+optimize allow whatsapp telegram obsidian
+
+# Restrict RAM and battery hogs to deep sleep when not in use
+optimize restrict swiggy flipkart zomato
+
+# Auto-restrict background bloatware while protecting chats and tools
+optimize auto
+
+# Kill non-essential background processes and reclaim RAM instantly
+optimize purge
+
+# Inspect all installed third-party apps and their background states
+optimize apps
 
 # Start a command in background, keeping a CPU WakeLock
 optimize run <task_name> "<command>"
@@ -213,6 +270,12 @@ Once upgraded, verify that the linker errors are resolved by running:
 ```bash
 adb version
 ```
+
+---
+
+### 🔄 Persistence & Device Reboot Guide
+
+For detailed information on what survives reboots, whether turning Developer Options OFF ruins optimizations, and the post-reboot routine, see [docs/persistence_and_reboot.md](file:///data/data/com.termux/files/home/ter/docs/persistence_and_reboot.md).
 
 ---
 

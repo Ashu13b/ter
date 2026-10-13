@@ -27,6 +27,7 @@ get_lan_ip() {
 
 # ── Project Shortcuts ──
 alias kocr-app='cd ~/kaggle-ocr'; alias kocr-res='cd ~/kaggle-ocr/results'
+alias literm='adb shell monkey -p dev.expeei.literm 1 >/dev/null 2>&1 || am start -n dev.expeei.literm >/dev/null 2>&1'
 # (NEXUS commands like watch/portal are provided by ~/.shell.d/apps/nexus/aliases.sh)
 
 # ── Fix/Kill ──

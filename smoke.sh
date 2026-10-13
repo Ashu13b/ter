@@ -4,7 +4,7 @@
 set -u
 
 REPO="$(cd "$(dirname "$0")" && pwd)"
-EXPECT="re cls scan adbcon optimize tabname apps ter dvop adb-apk codext"
+EXPECT="re cls scan adbcon optimize tabname apps ter dvop adb-apk codext app"
 FAIL=0
 SMOKE_OUTPUT=$(mktemp "${TMPDIR:-/tmp}/ter-smoke.XXXXXX") || exit 1
 trap 'rm -f "$SMOKE_OUTPUT"' EXIT
@@ -217,6 +217,17 @@ check_adb_validation() {
         fail "adb disconnect failure propagation"
     else
         echo "  [ ok ] adb disconnect failure propagation"
+    fi
+
+    _adbcon_parse_endpoint "192.168.1.5:42587"
+    local ep_ip="$PARSED_IP" ep_port="$PARSED_PORT"
+    _adbcon_parse_endpoint ":42587"
+    local ep_port2="$PARSED_PORT"
+    if [ "$ep_ip" = "192.168.1.5" ] && [ "$ep_port" = "42587" ] && [ "$ep_port2" = "42587" ] \
+        && adbcon status >/dev/null 2>&1; then
+        echo "  [ ok ] adb endpoint parsing & status"
+    else
+        fail "adb endpoint parsing & status"
     fi
     rm -rf "$adb_test_dir"
 }

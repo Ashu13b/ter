@@ -190,12 +190,21 @@ On every new interactive terminal session, a **compact one-line** stability summ
 |:---|:---|
 | `optimize status` | Quick compact stability audit (one-liner) |
 | `optimize status -f` | Full detailed audit with descriptions (verbose box) |
+| `optimize info` | Live device metrics, battery %, temperature, & top CPU processes |
 | `optimize fix` | Optimize via ADB (phantom limit → 2048, battery whitelist) |
+| `optimize tier` | Adaptive usage-based optimization (AOT speed compiles VIP apps, deep sleeps rare apps) |
+| `optimize purge` | Terminate non-essential background processes & reclaim RAM instantly |
+| `optimize allow <apps>` | Allow app(s) to run freely (Active Standby + Doze Whitelist) |
+| `optimize restrict <apps>` | Force app(s) into restricted deep sleep when idle |
+| `optimize apps` | List installed third-party apps and background status |
 | `optimize run <name> <cmd>` | Launch command in background with WakeLock & logging |
 | `optimize list` | List all active background tasks |
 | `optimize stop <name>` | Terminate a running background task |
 | `optimize log <name>` | Show log path and tail last 20 lines |
 | `optimize -h` | Show full help with examples |
+
+> [!NOTE]
+> **Reboot & Developer Options Persistence:** Want to know what survives reboots, whether turning Developer Options OFF ruins optimizations, or the 60-second post-reboot routine? Read the [Persistence, Reboot & Developer Options Guide](docs/persistence_and_reboot.md).
 
 ---
 
