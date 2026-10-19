@@ -465,11 +465,16 @@ EOF
             command -v pkg >/dev/null 2>&1 && pkg list-installed 2>/dev/null | sed -n 's|/.*||p' | sort -u
             echo ""
             echo "## ter required (packages.txt)"
-            [ -f "${TER_REPO_DIR:-$HOME/ter}/packages.txt" ] && grep -vE '^\s*(#|$)' "${TER_REPO_DIR:-$HOME/ter}/packages.txt" | sort -u
+            local pkgs_file="${TER_REPO_DIR:-$HOME/ter}/packages.txt"
+            local want=""
+            if [ -f "$pkgs_file" ]; then
+                want=$(sed -E 's/[[:space:]]*#.*$//' "$pkgs_file" | awk 'NF {print $1}' | sort -u)
+                echo "$want"
+            fi
             echo ""
             echo "## ter required NOT installed"
-            if [ -f "${TER_REPO_DIR:-$HOME/ter}/packages.txt" ] && command -v pkg >/dev/null 2>&1; then
-                want=$(grep -vE '^\s*(#|$)' "${TER_REPO_DIR:-$HOME/ter}/packages.txt" | sort -u)
+            if [ -n "$want" ] && command -v pkg >/dev/null 2>&1; then
+                local have
                 have=$(pkg list-installed 2>/dev/null | sed -n 's|/.*||p' | sort -u)
                 comm -23 <(echo "$want") <(echo "$have")
             fi

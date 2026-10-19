@@ -59,7 +59,7 @@ bat                 # syntax-highlighted cat
 eza                 # modern ls
 fzf                 # fuzzy finder
 zoxide              # smart cd (used by your .bashrc)
-man                 # local manpages
+mandoc              # man pages / man(1)
 proot-distro        # run glibc apps (e.g. Google Cloud CLI)
 
 # ── NOT in Termux repos — install separately if needed ──
