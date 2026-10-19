@@ -632,18 +632,23 @@ def fix_settings(include_apps=False):
         return
 
     # 1. Keep monitor on, but raise process limit ceiling to 2048
-    _adb_step("Enable phantom-process monitor", ["shell", "settings put global settings_enable_monitor_phantom_procs true"])
-    _adb_step("Raise phantom limit → 2048", ["shell", "device_config put activity_manager max_phantom_processes 2048"])
-
-    # 2. Whitelist com.termux from deviceidle
-    _adb_step("Whitelist Termux (Doze bypass)", ["shell", "dumpsys deviceidle whitelist +com.termux"])
-    _adb_step("Standby bucket → active", ["shell", "am set-standby-bucket com.termux active"])
+    steps = [
+        ("Enable phantom-process monitor", ["shell", "settings put global settings_enable_monitor_phantom_procs true"]),
+        ("Raise phantom limit → 2048", ["shell", "device_config put activity_manager max_phantom_processes 2048"]),
+        # 2. Whitelist com.termux from deviceidle
+        ("Whitelist Termux (Doze bypass)", ["shell", "dumpsys deviceidle whitelist +com.termux"]),
+        ("Standby bucket → active", ["shell", "am set-standby-bucket com.termux active"]),
+    ]
+    failed = sum(1 for label, args in steps if _adb_step(label, args) != 0)
 
     if include_apps:
         print("\n⚡ Running app background auto-optimization...")
         run_auto_optimize()
 
-    print("\n✅ Done! Running status audit again:")
+    if failed:
+        print(f"\n\033[1;33m⚠️  {failed}/{len(steps)} step(s) failed — check the ADB connection.\033[0m")
+    else:
+        print("\n✅ All fixes applied. Running status audit...")
     show_status()
 
 def load_tasks():
