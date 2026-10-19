@@ -42,6 +42,17 @@ _adbcon_pair_succeeded() {
     printf '%s\n' "$output" | grep -Eqi '(^|[[:space:]])successfully paired([[:space:]]|$)|pairing successful'
 }
 
+# Remember the last endpoint that actually connected, so reconnects after a
+# reboot/ADB restart are a single `adbcon` with no wizard.
+_adbcon_cache_file() {
+    printf '%s' "${XDG_CONFIG_HOME:-$HOME/.config}/ter/adb_last"
+}
+
+_adbcon_cache_save() {
+    local f; f=$(_adbcon_cache_file)
+    mkdir -p "${f%/*}" 2>/dev/null && printf '%s\n' "$1" > "$f" 2>/dev/null || true
+}
+
 _adbcon_status() {
     echo -e "\e[1;36m══ ADB STATUS & DIAGNOSTICS ══\e[0m"
     if ! command -v adb >/dev/null 2>&1; then
@@ -108,9 +119,9 @@ adbcon() {
                 echo "Usage: adbcon [options | command | endpoint]"
                 echo ""
                 echo "Commands & Options:"
-                echo "  adbcon                     Launch interactive connection wizard"
+                echo "  adbcon                     Connect (auto-reconnects to last endpoint; wizard only if needed)"
                 echo "  adbcon status, -s          Show ADB status and diagnostics"
-                echo "  adbcon -c, --no-shell      Connect to loopback without launching shell"
+                echo "  adbcon -c, --no-shell      Connect without dropping into a shell (never prompts when piped)"
                 echo "  adbcon <port>              Direct connect to port on phone IP"
                 echo "  adbcon <ip>:<port>         Direct connect to specific endpoint"
                 echo "  adbcon pair <port> <code>  Pair directly using port and code"
@@ -225,6 +236,37 @@ adbcon() {
         return $?
     fi
 
+    # Reconnect to the last known-good endpoint, so a rebooted/restarted ADB
+    # comes back with a single `adbcon` and no wizard.
+    local cache_file; cache_file=$(_adbcon_cache_file)
+    if [ -z "$direct_port" ] && [ "$direct_pair" -eq 0 ] && [ "$scan_ports" -eq 0 ] && [ -r "$cache_file" ]; then
+        local last; last=$(cat "$cache_file" 2>/dev/null)
+        if [ -n "$last" ]; then
+            echo -e "↻ \e[1;36mTrying last known endpoint:\e[0m $last"
+            _adbcon_timed connect "$last" >/dev/null 2>&1 || true
+            sleep 0.6
+            if _adbcon_timed devices 2>/dev/null | grep -qE "^${last}[[:space:]]+device"; then
+                _adbcon_timed tcpip 5555 >/dev/null 2>&1 || true
+                local lk=0 i
+                for i in $(seq 1 6); do
+                    sleep 0.5
+                    _adbcon_timed connect "$LOCAL_LOOPBACK" >/dev/null 2>&1 || true
+                    if _adbcon_timed devices 2>/dev/null | grep -qE "^${LOCAL_LOOPBACK}[[:space:]]+device"; then lk=1; break; fi
+                done
+                _adbcon_timed disconnect "$last" >/dev/null 2>&1 || true
+                if [ "$lk" -eq 1 ]; then
+                    echo -e "🎉 \e[1;32mReconnected via last known endpoint.\e[0m"
+                    if [ "$no_shell" -eq 1 ]; then
+                        return 0
+                    fi
+                    echo -e "Dropping into shell...\n"
+                    adb -s "$LOCAL_LOOPBACK" shell
+                    return $?
+                fi
+            fi
+        fi
+    fi
+
     # Check if a non-loopback device is already attached (e.g. active Wi-Fi channel)
     local existing_attached
     existing_attached=$(_adbcon_timed devices 2>/dev/null | sed '1d' | grep -vE "^${LOCAL_LOOPBACK}[[:space:]]" | awk '$2 == "device" {print $1}' | head -n 1)
@@ -255,6 +297,13 @@ adbcon() {
 
     # Clean up stale loopback entry so it doesn't interfere
     _adbcon_timed disconnect "$LOCAL_LOOPBACK" >/dev/null 2>&1 || true
+
+    # A script or non-interactive caller must never block on a hidden prompt.
+    if [ ! -t 0 ] && [ -z "$direct_port" ] && [ "$direct_pair" -eq 0 ] && [ "$scan_ports" -eq 0 ]; then
+        echo "No active ADB device, and stdin is not a TTY to pair interactively." >&2
+        echo "Run 'adbcon' in a terminal, or pass an endpoint: adbcon <port|ip:port>." >&2
+        return 1
+    fi
 
     echo -e "\n\e[1;36m══ TERMUX SMART ADB WIZARD ══\e[0m\n"
     echo -e "⚠️  \e[33mBackground channel offline (Phone rebooted or ADB killed)\e[0m"
@@ -592,6 +641,7 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=300) as e:
             _adbcon_timed disconnect "$IP:$current_port" > /dev/null 2>&1 || true
             _adbcon_timed -s "$LOCAL_LOOPBACK" wait-for-device 2>/dev/null
             echo -e "🚀 \e[1;32mEverything set up! Loopback mode is active.\e[0m\n"
+            _adbcon_cache_save "$IP:$current_port"
             if [ "$no_shell" -eq 1 ]; then
                 return 0
             fi
@@ -601,6 +651,7 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=300) as e:
         else
             echo -e "⚠️  \e[33mFailed to lock loopback channel (port 5555).\e[0m"
             echo -e "🚀 \e[1;32mFalling back to active Wi-Fi channel.\e[0m\n"
+            _adbcon_cache_save "$IP:$current_port"
             _adbcon_timed -s "$IP:$current_port" wait-for-device 2>/dev/null
             if [ "$no_shell" -eq 1 ]; then
                 return 0

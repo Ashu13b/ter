@@ -219,6 +219,20 @@ check_adb_validation() {
         echo "  [ ok ] adb disconnect failure propagation"
     fi
 
+    # With no device and non-tty stdin, adbcon must exit instead of prompting.
+    if (
+        XDG_CONFIG_HOME="$adb_test_dir"
+        _adbcon_timed() { return 1; }
+        adbcon </dev/null
+    ) >"$SMOKE_OUTPUT" 2>&1; then
+        fail "adb non-interactive guard"
+    elif grep -q "not a TTY" "$SMOKE_OUTPUT"; then
+        echo "  [ ok ] adb non-interactive guard"
+    else
+        fail "adb non-interactive guard"
+    fi
+    : > "$SMOKE_OUTPUT"
+
     _adbcon_parse_endpoint "192.168.1.5:42587"
     local ep_ip="$PARSED_IP" ep_port="$PARSED_PORT"
     _adbcon_parse_endpoint ":42587"
