@@ -1,4 +1,4 @@
-import subprocess, sys, re, os, json, time, importlib
+import subprocess, sys, re, os, json, time, importlib, threading
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from adb_common import get_adb_device, run_adb as _run_adb
 
@@ -11,16 +11,68 @@ def make_link(url, text):
 def run_adb(args, device=None):
     return _run_adb(args, device=device)
 
+def _step(label, fn):
+    """Run fn() behind a single-line spinner, then leave a ✓/✗ result line.
+
+    On a non-tty (piped) stdout the spinner is skipped and just the result is
+    printed, so logs stay clean. fn() returns an rc (0 == ok)."""
+    frames = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+    tty = sys.stdout.isatty()
+    if tty:
+        stop = threading.Event()
+
+        def spin():
+            i = 0
+            while not stop.wait(0.1):
+                sys.stdout.write(f"\r\033[K  \033[1;36m{frames[i % len(frames)]}\033[0m {label}")
+                sys.stdout.flush()
+                i += 1
+
+        t = threading.Thread(target=spin, daemon=True)
+        t.start()
+        try:
+            rc = fn()
+        finally:
+            stop.set()
+            t.join()
+            sys.stdout.write("\r\033[K")
+            sys.stdout.flush()
+    else:
+        rc = fn()
+    mark = "\033[1;32m✓\033[0m" if rc == 0 else "\033[1;31m✗\033[0m"
+    print(f"  {mark} {label}")
+    return rc
+
+def _adb_step(label, args):
+    """Run one adb command with live progress; returns its return code."""
+    def go():
+        _, _, rc = run_adb(args)
+        return rc
+    return _step(label, go)
+
 def ensure_adb():
     dev = get_adb_device()
     if dev:
         return dev
-    # Try connecting via adbcon -c
-    subprocess.run(
-        ["bash", "-c", "source ~/.shell.d/network/adb_connect.sh 2>/dev/null || source \"$HOME/ter/network/adb_connect.sh\"; adbcon -c"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL
-    )
+
+    # Non-interactive auto-connect. adbcon must never drop into its
+    # interactive wizard here: prompts are redirected to DEVNULL, so a
+    # blocking read would wedge the CLI. DEVNULL stdin cancels the wizard and
+    # the timeout bounds the attempt regardless.
+    def connect():
+        try:
+            subprocess.run(
+                ["bash", "-c", "source ~/.shell.d/network/adb_connect.sh 2>/dev/null || source \"$HOME/ter/network/adb_connect.sh\"; adbcon -c"],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=20,
+            )
+        except subprocess.TimeoutExpired:
+            pass
+        return 0 if get_adb_device() else 1
+
+    _step("Connecting to ADB device", connect)
     return get_adb_device()
 
 def get_adb_manage():
@@ -573,23 +625,20 @@ def show_device_info():
     print("\033[1;35m└──────────────────────────────────────────────────────────┘\033[0m\n")
 
 def fix_settings(include_apps=False):
+    print("\n⚡ \033[1mOptimizing Termux background permissions\033[0m")
     dev = ensure_adb()
     if not dev:
         print("\033[1;31m❌ ADB is offline. Run 'adbcon' first.\033[0m")
         return
 
-    print("\n⚡ Optimizing Termux background permissions...")
-    
     # 1. Keep monitor on, but raise process limit ceiling to 2048
-    print("  🛠️ Setting Phantom Process limit to 2048...")
-    run_adb(["shell", "settings put global settings_enable_monitor_phantom_procs true"])
-    run_adb(["shell", "device_config put activity_manager max_phantom_processes 2048"])
-    
+    _adb_step("Enable phantom-process monitor", ["shell", "settings put global settings_enable_monitor_phantom_procs true"])
+    _adb_step("Raise phantom limit → 2048", ["shell", "device_config put activity_manager max_phantom_processes 2048"])
+
     # 2. Whitelist com.termux from deviceidle
-    print("  🛠️ Whitelisting Termux from battery optimization...")
-    run_adb(["shell", "dumpsys deviceidle whitelist +com.termux"])
-    run_adb(["shell", "am set-standby-bucket com.termux active"])
-    
+    _adb_step("Whitelist Termux (Doze bypass)", ["shell", "dumpsys deviceidle whitelist +com.termux"])
+    _adb_step("Standby bucket → active", ["shell", "am set-standby-bucket com.termux active"])
+
     if include_apps:
         print("\n⚡ Running app background auto-optimization...")
         run_auto_optimize()
