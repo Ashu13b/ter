@@ -53,6 +53,105 @@ _adbcon_cache_save() {
     mkdir -p "${f%/*}" 2>/dev/null && printf '%s\n' "$1" > "$f" 2>/dev/null || true
 }
 
+# Wi-Fi client (STA) IP — wlan0/wlan1. Wireless Debugging only runs on a client link.
+_adbcon_sta_ip() {
+    ifconfig 2>/dev/null | awk '/^wlan/ {w=1} /^[^ \t]/ && !/^wlan/ {w=0} w && /inet / {print $2}' | head -n 1
+}
+
+# Exact-match state of one endpoint in `adb devices` (device/offline/unauthorized/empty).
+_adbcon_state() {
+    _adbcon_timed devices 2>/dev/null | awk -v ep="$1" '$1 == ep {print $2; exit}'
+}
+
+# Short-timeout connect for probing guesses: a dead endpoint must not cost 20s.
+_adbcon_probe() {
+    local ep="$1" st i
+    ADBCON_TIMEOUT_SECONDS="${ADBCON_PROBE_SECONDS:-4}" _adbcon_timed connect "$ep" >/dev/null 2>&1 || true
+    for i in 1 2 3; do
+        st=$(_adbcon_state "$ep")
+        [ "$st" = "device" ] && return 0
+        [ "$st" = "unauthorized" ] && break
+        sleep 0.3
+    done
+    _adbcon_timed disconnect "$ep" >/dev/null 2>&1 || true
+    [ "$st" = "unauthorized" ] && return 2
+    return 1
+}
+
+# Print ports in the Wireless Debugging range on $1 that speak the ADB
+# protocol (adbd answers a CNXN with STLS/CNXN/AUTH). Other open ports are
+# dropped here, so each one doesn't cost an adb connect timeout. ~6s on-device.
+_adbcon_scan_ports() {
+    timeout 30 python3 -c '
+import socket, struct, sys, concurrent.futures
+ip = sys.argv[1]
+payload = b"host::\0"
+cmd = 0x4e584e43
+cnxn = struct.pack("<6I", cmd, 0x01000001, 256 * 1024, len(payload),
+                   sum(payload) & 0xffffffff, cmd ^ 0xffffffff) + payload
+def is_open(p):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.05)
+        return p if s.connect_ex((ip, p)) == 0 else None
+def is_adb(p):
+    try:
+        with socket.create_connection((ip, p), timeout=1) as s:
+            s.sendall(cnxn)
+            return s.recv(4)[:4] in (b"STLS", b"CNXN", b"AUTH")
+    except OSError:
+        return False
+with concurrent.futures.ThreadPoolExecutor(max_workers=300) as e:
+    open_ports = [p for p in e.map(is_open, range(30000, 50000)) if p]
+    for p, ok in zip(open_ports, e.map(is_adb, open_ports)):
+        if ok: print(p)
+' "$1" 2>/dev/null
+}
+
+# Wireless Debugging picks a new random port on every toggle/reboot, so the
+# cached port goes stale often. Try it on the *current* IP, then auto-scan.
+# Prints the working ip:port; returns 2 if a port answered but is unauthorized.
+_adbcon_autodetect() {
+    local sta_ip cached cached_port="" ports port rc revoked=0
+    sta_ip=$(_adbcon_sta_ip)
+    if [ -z "$sta_ip" ]; then
+        echo "○ No Wi-Fi client link — Wireless Debugging can't be on; skipping auto-detect." >&2
+        return 1
+    fi
+    cached=$(cat "$(_adbcon_cache_file)" 2>/dev/null)
+    if [ -n "$cached" ]; then
+        _adbcon_parse_endpoint "$cached"
+        _adbcon_valid_port "$PARSED_PORT" && cached_port="$PARSED_PORT"
+    fi
+    if [ -n "$cached_port" ]; then
+        echo -e "↻ \e[1;36mTrying last known port on current IP:\e[0m $sta_ip:$cached_port" >&2
+        _adbcon_probe "$sta_ip:$cached_port"; rc=$?
+        if [ "$rc" -eq 0 ]; then printf '%s\n' "$sta_ip:$cached_port"; return 0; fi
+        [ "$rc" -eq 2 ] && revoked=1
+        echo -e "   \e[90mLast port is gone (Wireless Debugging restarted?).\e[0m" >&2
+    fi
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "   Auto-scan needs python3 (pkg install python)." >&2
+        return 1
+    fi
+    echo -e "🔍 \e[1;36mAuto-detecting Wireless Debugging port on $sta_ip...\e[0m" >&2
+    ports=$(_adbcon_scan_ports "$sta_ip")
+    while IFS= read -r port; do
+        [ -z "$port" ] || [ "$port" = "$cached_port" ] && continue
+        _adbcon_probe "$sta_ip:$port"; rc=$?
+        if [ "$rc" -eq 0 ]; then
+            echo -e "🔌 Found ADB on port \e[1;33m$port\e[0m" >&2
+            printf '%s\n' "$sta_ip:$port"; return 0
+        fi
+        [ "$rc" -eq 2 ] && revoked=1
+    done <<< "$ports"
+    if [ "$revoked" -eq 1 ]; then
+        echo -e "🔒 \e[1;33mADB port found but pairing is no longer trusted — fresh pair needed.\e[0m" >&2
+        return 2
+    fi
+    echo "   No Wireless Debugging port found (is it ON?)." >&2
+    return 1
+}
+
 _adbcon_status() {
     echo -e "\e[1;36m══ ADB STATUS & DIAGNOSTICS ══\e[0m"
     if ! command -v adb >/dev/null 2>&1; then
@@ -92,7 +191,7 @@ _adbcon_status() {
 
     # Check Wi-Fi / IP link
     local sta_ip
-    sta_ip=$(ifconfig 2>/dev/null | awk '/^wlan/ {w=1} /^[^ \t]/ && !/^wlan/ {w=0} w && /inet / {print $2}' | head -n 1)
+    sta_ip=$(_adbcon_sta_ip)
     if [ -n "$sta_ip" ]; then
         echo -e "📡 Wi-Fi IP (Client): \e[1;32m$sta_ip\e[0m"
     fi
@@ -119,7 +218,7 @@ adbcon() {
                 echo "Usage: adbcon [options | command | endpoint]"
                 echo ""
                 echo "Commands & Options:"
-                echo "  adbcon                     Connect (auto-reconnects to last endpoint; wizard only if needed)"
+                echo "  adbcon                     Connect (auto-detects port: last known, then scan; wizard only if needed)"
                 echo "  adbcon status, -s          Show ADB status and diagnostics"
                 echo "  adbcon -c, --no-shell      Connect without dropping into a shell (never prompts when piped)"
                 echo "  adbcon <port>              Direct connect to port on phone IP"
@@ -236,35 +335,33 @@ adbcon() {
         return $?
     fi
 
-    # Reconnect to the last known-good endpoint, so a rebooted/restarted ADB
-    # comes back with a single `adbcon` and no wizard.
-    local cache_file; cache_file=$(_adbcon_cache_file)
-    if [ -z "$direct_port" ] && [ "$direct_pair" -eq 0 ] && [ "$scan_ports" -eq 0 ] && [ -r "$cache_file" ]; then
-        local last; last=$(cat "$cache_file" 2>/dev/null)
-        if [ -n "$last" ]; then
-            echo -e "↻ \e[1;36mTrying last known endpoint:\e[0m $last"
-            _adbcon_timed connect "$last" >/dev/null 2>&1 || true
-            sleep 0.6
-            if _adbcon_timed devices 2>/dev/null | grep -qE "^${last}[[:space:]]+device"; then
-                _adbcon_timed tcpip 5555 >/dev/null 2>&1 || true
-                local lk=0 i
-                for i in $(seq 1 6); do
-                    sleep 0.5
-                    _adbcon_timed connect "$LOCAL_LOOPBACK" >/dev/null 2>&1 || true
-                    if _adbcon_timed devices 2>/dev/null | grep -qE "^${LOCAL_LOOPBACK}[[:space:]]+device"; then lk=1; break; fi
-                done
-                _adbcon_timed disconnect "$last" >/dev/null 2>&1 || true
-                if [ "$lk" -eq 1 ]; then
-                    echo -e "🎉 \e[1;32mReconnected via last known endpoint.\e[0m"
-                    if [ "$no_shell" -eq 1 ]; then
-                        return 0
-                    fi
-                    echo -e "Dropping into shell...\n"
-                    adb -s "$LOCAL_LOOPBACK" shell
-                    return $?
-                fi
+    # Auto-detect: last known port on the current IP, else scan for it.
+    local auto_rc=1 auto_ep=""
+    if [ -z "$direct_port" ] && [ "$direct_pair" -eq 0 ] && [ "$scan_ports" -eq 0 ]; then
+        auto_ep=$(_adbcon_autodetect); auto_rc=$?
+        if [ "$auto_rc" -eq 0 ] && [ -n "$auto_ep" ]; then
+            _adbcon_cache_save "$auto_ep"
+            _adbcon_timed -s "$auto_ep" tcpip 5555 >/dev/null 2>&1 || true
+            local lk=0 i
+            for i in 1 2 3 4 5 6; do
+                sleep 0.5
+                _adbcon_timed connect "$LOCAL_LOOPBACK" >/dev/null 2>&1 || true
+                if [ "$(_adbcon_state "$LOCAL_LOOPBACK")" = "device" ]; then lk=1; break; fi
+            done
+            local target="$auto_ep"
+            if [ "$lk" -eq 1 ]; then
+                _adbcon_timed disconnect "$auto_ep" >/dev/null 2>&1 || true
+                target="$LOCAL_LOOPBACK"
+                echo -e "🎉 \e[1;32mReconnected — loopback mode active.\e[0m"
+            else
+                echo -e "⚠️  \e[33mConnected on $auto_ep but loopback lock failed; using Wi-Fi channel.\e[0m"
             fi
+            [ "$no_shell" -eq 1 ] && return 0
+            echo -e "Dropping into shell...\n"
+            adb -s "$target" shell
+            return $?
         fi
+        [ "$auto_rc" -eq 2 ] && wizard_choice="2"
     fi
 
     # Check if a non-loopback device is already attached (e.g. active Wi-Fi channel)
@@ -314,7 +411,7 @@ adbcon() {
     # 2. Check Network (Best Effort)
     local IP STA_IP AP_IP
     # STA (client) — wlan0/wlan1: real Wi-Fi client link, only mode that unlocks Wireless Debugging.
-    STA_IP=$(ifconfig 2>/dev/null | awk '/^wlan/ {w=1} /^[^ \t]/ && !/^wlan/ {w=0} w && /inet / {print $2}' | head -n 1)
+    STA_IP=$(_adbcon_sta_ip)
     # AP (hotspot) — ap0/swlan0: phone is broadcasting, not joined as client. Doesn't help ADB.
     AP_IP=$(ifconfig 2>/dev/null | awk '/^(ap|swlan)/ {w=1} /^[^ \t]/ && !/^(ap|swlan)/ {w=0} w && /inet / {print $2}' | head -n 1)
 
@@ -416,26 +513,14 @@ adbcon() {
 
     if [ "$scan_ports" -eq 1 ]; then
         echo -e "🔍 \e[1;36mScanning for an already-paired Wireless Debugging port...\e[0m"
-        if ! ports=$(timeout 30 python3 -c '
-import socket, sys, concurrent.futures
-ip = sys.argv[1]
-def scan(p):
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.settimeout(0.05)
-        if s.connect_ex((ip, p)) == 0:
-            return p
-    return None
-with concurrent.futures.ThreadPoolExecutor(max_workers=300) as e:
-    results = e.map(lambda p: scan(p), range(30000, 50000))
-    for r in results:
-        if r: print(r)
-' "$IP" 2>/dev/null)
+        if ! ports=$(_adbcon_scan_ports "$IP")
         then
             echo "Wireless ADB port scan failed or timed out after 30 seconds." >&2
             return 1
         fi
 
-        for port in $ports; do
+        while IFS= read -r port; do
+            [ -z "$port" ] && continue
             echo -e "🔌 Found port \e[1;33m$port\e[0m. Testing connection..."
             _adbcon_timed connect "$IP:$port" >/dev/null 2>&1 || true
             sleep 0.4
@@ -453,7 +538,7 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=300) as e:
             else
                 _adbcon_timed disconnect "$IP:$port" >/dev/null 2>&1 || true
             fi
-        done
+        done <<< "$ports"
 
         if [ $pairing_revoked -eq 1 ]; then
             echo -e "   \e[90mFresh pair needed — skipping remaining port probes.\e[0m\n"

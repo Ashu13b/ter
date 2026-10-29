@@ -40,6 +40,11 @@ adbcon status
 # Connect/lock loopback without launching interactive shell
 adbcon -c
 
+# Plain `adbcon` auto-detects before any wizard: it tries the last working
+# port on the *current* Wi-Fi IP, then scans 30000-50000 for a port that
+# actually speaks ADB. Wireless Debugging picks a new random port on every
+# toggle/reboot, so the saved port is only a first guess.
+
 # Connect directly to port (or IP:port)
 adbcon 42587
 adbcon 192.168.1.10:42587

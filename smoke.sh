@@ -243,6 +243,42 @@ check_adb_validation() {
     else
         fail "adb endpoint parsing & status"
     fi
+
+    # Port scan must report only ports that speak ADB, not every open port.
+    if command -v python3 >/dev/null 2>&1; then
+        local scan_out
+        scan_out=$(ADB_SH="$REPO/network/adb_connect.sh" python3 - <<'PY' 2>/dev/null
+import os, socket, subprocess, threading
+def serve(reply):
+    s = socket.socket()
+    for port in range(48000, 49999):  # inside the 30000-50000 scan range
+        try:
+            s.bind(("127.0.0.1", port)); break
+        except OSError:
+            continue
+    s.listen(4)
+    def loop():
+        while True:
+            c, _ = s.accept()
+            try:
+                c.recv(64)
+                if reply: c.sendall(reply)
+            finally:
+                c.close()
+    threading.Thread(target=loop, daemon=True).start()
+    return s.getsockname()[1]
+fake_adb, other = serve(b"STLS" + bytes(20)), serve(b"")
+out = subprocess.run(["bash", "-c", '. "$1"; _adbcon_scan_ports 127.0.0.1', "_",
+                      os.environ["ADB_SH"]], capture_output=True, text=True).stdout.split()
+print("ok" if str(fake_adb) in out and str(other) not in out else "bad", fake_adb, other)
+PY
+)
+        if [ "${scan_out%% *}" = "ok" ]; then
+            echo "  [ ok ] adb port scan protocol filter"
+        else
+            fail "adb port scan protocol filter"
+        fi
+    fi
     rm -rf "$adb_test_dir"
 }
 
