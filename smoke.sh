@@ -4,7 +4,7 @@
 set -u
 
 REPO="$(cd "$(dirname "$0")" && pwd)"
-EXPECT="re cls scan adbcon optimize tabname apps ter dvop adb-apk codext app agy-account airlink remurl url-heal qr auth-code"
+EXPECT="re cls scan adbcon optimize tabname apps ter dvop adb-apk codext app agy-account airlink url-heal qr auth-code"
 FAIL=0
 SMOKE_OUTPUT=$(mktemp "${TMPDIR:-/tmp}/ter-smoke.XXXXXX") || exit 1
 trap 'rm -f "$SMOKE_OUTPUT"' EXIT
@@ -68,12 +68,12 @@ check_isolated_install() {
         if [ "$shell" = "bash" ]; then
             HOME="$test_home" TMUX=ter-smoke TER_LOADED=1 TER_LOADED_PID=1 \
                 bash --noprofile --norc -c \
-                'source "$HOME/.bashrc"; type ter >/dev/null && type apps >/dev/null && type codext >/dev/null && type agy-account >/dev/null && type airlink >/dev/null && type remurl >/dev/null && type url-heal >/dev/null && type qr >/dev/null && type auth-code >/dev/null' \
+                'source "$HOME/.bashrc"; type ter >/dev/null && type apps >/dev/null && type codext >/dev/null && type agy-account >/dev/null && type airlink >/dev/null && type url-heal >/dev/null && type qr >/dev/null && type auth-code >/dev/null' \
                 || loader_rc=1
         else
             HOME="$test_home" TMUX=ter-smoke TER_LOADED=1 TER_LOADED_PID=1 \
                 zsh -f -c \
-                'source "$HOME/.zshrc"; type ter >/dev/null && type apps >/dev/null && type codext >/dev/null && type agy-account >/dev/null && type airlink >/dev/null && type remurl >/dev/null && type url-heal >/dev/null && type qr >/dev/null && type auth-code >/dev/null' \
+                'source "$HOME/.zshrc"; type ter >/dev/null && type apps >/dev/null && type codext >/dev/null && type agy-account >/dev/null && type airlink >/dev/null && type url-heal >/dev/null && type qr >/dev/null && type auth-code >/dev/null' \
                 || loader_rc=1
         fi
     done
@@ -686,11 +686,6 @@ check_airlink() {
     help_out=$(bash -c "source '$REPO/user/airlink.sh' && airlink -h" 2>/dev/null)
     if ! echo "$help_out" | grep -q "AirLink: Universal"; then
         fail "airlink help output"
-        return
-    fi
-    help_out=$(bash -c "source '$REPO/user/airlink.sh' && remurl -h" 2>/dev/null)
-    if ! echo "$help_out" | grep -q "AirLink: Universal"; then
-        fail "remurl alias help output"
         return
     fi
     local healed

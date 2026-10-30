@@ -26,7 +26,6 @@ Welcome to the command line interface guide for the unified **TER OS** Termux en
 | `url-heal` | Utility | Fixes soft-wrapped, newline-split, or WhatsApp-broken URLs | `url-heal -h` |
 | `qr` | Utility | Renders ASCII QR code for any link/text (auto-heals clipboard) | `qr -h` |
 | `auth-code` | Utility | Extracts Google OAuth code from callback URLs or text | `auth-code -h` |
-| `remurl` | AI / Network | Backward-compatible alias for `airlink` | `remurl -h` |
 | `ter` | System | Master Controller dashboard and interactive theme switcher | `ter -h` / `ter --help` |
 
 ---
@@ -307,9 +306,6 @@ url-heal                    # Fixes whatever broken URL is in your clipboard
 qr                          # Renders QR code for clipboard (auto-heals links)
 qr "https://github.com"     # Renders QR for explicit text
 auth-code                   # Extracts clean '4/0AX...' from clipboard URL or message
-
-# Backward compatibility alias
-remurl agy
 ```
 
 ---

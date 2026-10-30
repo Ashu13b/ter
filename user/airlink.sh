@@ -15,11 +15,6 @@ airlink() {
     python3 "$script" "$@"
 }
 
-# Backward compatibility alias for remurl
-remurl() {
-    airlink "$@"
-}
-
 # Standalone Link Healer
 url-heal() {
     local script="$HOME/.shell.d/user/airlink.py"
@@ -66,7 +61,6 @@ if [ -n "${BASH_VERSION:-}" ]; then
         fi
     }
     complete -F _ter_airlink_completions airlink 2>/dev/null || true
-    complete -F _ter_airlink_completions remurl 2>/dev/null || true
 elif [ -n "${ZSH_VERSION:-}" ]; then
     _ter_zsh_airlink() {
         local -a nodes common_cmds
@@ -87,6 +81,5 @@ elif [ -n "${ZSH_VERSION:-}" ]; then
     }
     if type compdef >/dev/null 2>&1; then
         compdef _ter_zsh_airlink airlink 2>/dev/null || true
-        compdef _ter_zsh_airlink remurl 2>/dev/null || true
     fi
 fi
