@@ -4,7 +4,7 @@
 set -u
 
 REPO="$(cd "$(dirname "$0")" && pwd)"
-EXPECT="re cls scan adbcon optimize tabname apps ter dvop adb-apk codext app agy-account remurl"
+EXPECT="re cls scan adbcon optimize tabname apps ter dvop adb-apk codext app agy-account airlink remurl url-heal qr auth-code"
 FAIL=0
 SMOKE_OUTPUT=$(mktemp "${TMPDIR:-/tmp}/ter-smoke.XXXXXX") || exit 1
 trap 'rm -f "$SMOKE_OUTPUT"' EXIT
@@ -68,12 +68,12 @@ check_isolated_install() {
         if [ "$shell" = "bash" ]; then
             HOME="$test_home" TMUX=ter-smoke TER_LOADED=1 TER_LOADED_PID=1 \
                 bash --noprofile --norc -c \
-                'source "$HOME/.bashrc"; type ter >/dev/null && type apps >/dev/null && type codext >/dev/null && type agy-account >/dev/null && type remurl >/dev/null' \
+                'source "$HOME/.bashrc"; type ter >/dev/null && type apps >/dev/null && type codext >/dev/null && type agy-account >/dev/null && type airlink >/dev/null && type remurl >/dev/null && type url-heal >/dev/null && type qr >/dev/null && type auth-code >/dev/null' \
                 || loader_rc=1
         else
             HOME="$test_home" TMUX=ter-smoke TER_LOADED=1 TER_LOADED_PID=1 \
                 zsh -f -c \
-                'source "$HOME/.zshrc"; type ter >/dev/null && type apps >/dev/null && type codext >/dev/null && type agy-account >/dev/null && type remurl >/dev/null' \
+                'source "$HOME/.zshrc"; type ter >/dev/null && type apps >/dev/null && type codext >/dev/null && type agy-account >/dev/null && type airlink >/dev/null && type remurl >/dev/null && type url-heal >/dev/null && type qr >/dev/null && type auth-code >/dev/null' \
                 || loader_rc=1
         fi
     done
@@ -681,14 +681,32 @@ check_agy_account() {
     rm -rf "$test_dir"
 }
 
-check_remurl() {
+check_airlink() {
     local help_out
-    help_out=$(bash -c "source '$REPO/user/remurl.sh' && remurl -h" 2>/dev/null)
-    if ! echo "$help_out" | grep -q "Universal Remote URL Capturer"; then
-        fail "remurl help output"
+    help_out=$(bash -c "source '$REPO/user/airlink.sh' && airlink -h" 2>/dev/null)
+    if ! echo "$help_out" | grep -q "AirLink: Universal"; then
+        fail "airlink help output"
         return
     fi
-    echo "  [ ok ] remurl shell command"
+    help_out=$(bash -c "source '$REPO/user/airlink.sh' && remurl -h" 2>/dev/null)
+    if ! echo "$help_out" | grep -q "AirLink: Universal"; then
+        fail "remurl alias help output"
+        return
+    fi
+    local healed
+    healed=$(python3 "$REPO/user/airlink.py" heal "https://example.com/oauth?a=1
+&b=2")
+    if [ "$healed" != "https://example.com/oauth?a=1&b=2" ]; then
+        fail "url-heal parsing ($healed)"
+        return
+    fi
+    local code
+    code=$(python3 "$REPO/user/airlink.py" code "http://localhost/?code=4/0AXtest99&state=xyz")
+    if [ "$code" != "4/0AXtest99" ]; then
+        fail "auth-code extraction ($code)"
+        return
+    fi
+    echo "  [ ok ] airlink suite operations"
 }
 
 echo "TER smoke test — $REPO"
@@ -700,7 +718,7 @@ check_sync_paths
 check_codext_scope
 check_tab_title
 check_agy_account
-check_remurl
+check_airlink
 # zsh doesn't support --noprofile; use -f instead.
 run_in bash "bash"
 if command -v zsh >/dev/null 2>&1; then

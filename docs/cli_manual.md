@@ -22,7 +22,11 @@ Welcome to the command line interface guide for the unified **TER OS** Termux en
 | `apps` | Registry | Termux plug-in app registry loader and manifest visualizer | `apps -h` |
 | `codext` | AI / Network | OpenAI Codex launcher with auto-tinyproxy and Termux TLS cert fixes | `codext --help` |
 | `agy-account` | AI / Account | Antigravity CLI account switcher, profile manager, and session rotator | `agy-account -h` |
-| `remurl` | AI / Network | Runs any CLI on remote VM, captures login/OAuth URLs, and opens them on phone | `remurl -h` |
+| `airlink` | AI / Auth | Cross-device auth bridge, mobile gateway, & terminal URL toolkit | `airlink -h` |
+| `url-heal` | Utility | Fixes soft-wrapped, newline-split, or WhatsApp-broken URLs | `url-heal -h` |
+| `qr` | Utility | Renders ASCII QR code for any link/text (auto-heals clipboard) | `qr -h` |
+| `auth-code` | Utility | Extracts Google OAuth code from callback URLs or text | `auth-code -h` |
+| `remurl` | AI / Network | Backward-compatible alias for `airlink` | `remurl -h` |
 | `ter` | System | Master Controller dashboard and interactive theme switcher | `ter -h` / `ter --help` |
 
 ---
@@ -283,25 +287,29 @@ agy account list
 ter account next
 ```
 
-### 🌐 Universal Remote URL Capturer & Local Opener (`remurl`)
-Runs any command on your remote VM (defaults to active node / `ubu`), captures any authentication, login, or service URL (Google, GitHub, Claude, Tailscale, Hugging Face, Jupyter, Ngrok, etc.), and opens it directly in your phone browser while keeping your terminal interactive for codes and prompts.
+### ⚡ Cross-Device Auth Bridge & URL Toolkit (`airlink`)
+Bridges CLI login sessions across physical devices (Termux, remote VM, other mobile phones). Captures any authentication, login, or service URL (Google, GitHub, Claude, Tailscale, Hugging Face, Jupyter, Ngrok, etc.), serves an ephemeral mobile auth gateway, heals soft-wrapped URLs, and auto-injects authorization codes.
 
 ```bash
-# Run commands on default node (e.g. ubu / oracle)
-remurl "gh auth login"
-remurl claude login
-remurl "tailscale up"
-remurl "jupyter notebook"
-remurl huggingface-cli login
+# 1. Full-service cross-device auth (hosts mobile gateway, auto-injects code, saves token)
+airlink agy                 # Local run with mobile gateway
+airlink ubu agy             # Run on remote VM 'ubu'
+airlink gh auth login       # GitHub device flow across phones
 
-# Explicit node target
-remurl oracle "gcloud auth login"
+# 2. Direct QR code mode (renders OAuth link QR directly in terminal, skips gateway)
+airlink --qr agy
 
-# Print URL without opening in browser
-remurl --no-open "gh auth login"
+# 3. Open in local phone browser
+airlink --open agy
 
-# Run full-screen curses/TUI apps inside remote tmux and attach
-remurl --tmux agy
+# 4. Standalone modular tools
+url-heal                    # Fixes whatever broken URL is in your clipboard
+qr                          # Renders QR code for clipboard (auto-heals links)
+qr "https://github.com"     # Renders QR for explicit text
+auth-code                   # Extracts clean '4/0AX...' from clipboard URL or message
+
+# Backward compatibility alias
+remurl agy
 ```
 
 ---

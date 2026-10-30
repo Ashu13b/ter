@@ -195,6 +195,11 @@ snapshot_aux_file "$HOME/.tmux.conf"
 snapshot_aux_file "$HOME/.bashrc"
 snapshot_aux_file "$HOME/.zshrc"
 snapshot_aux_file "$HOME/.local/bin/agy-account"
+snapshot_aux_file "$HOME/.local/bin/airlink"
+snapshot_aux_file "$HOME/.local/bin/url-heal"
+snapshot_aux_file "$HOME/.local/bin/qr"
+snapshot_aux_file "$HOME/.local/bin/auth-code"
+snapshot_aux_file "$HOME/.local/bin/remurl"
 snapshot_aux_file "$REPO_DIR/motd"
 if [ "${TER_SKIP_MOTD:-0}" != "1" ] && [ -e "/data/data/com.termux/files/usr/etc/motd" ]; then
     snapshot_aux_file "/data/data/com.termux/files/usr/etc/motd"
@@ -347,6 +352,19 @@ if [ -f "$REPO_DIR/user/agy-account.py" ]; then
         termux-fix-shebang "$HOME/.local/bin/agy-account" >/dev/null 2>&1 || true
     fi
     success "agy-account deployed to ~/.local/bin/agy-account"
+fi
+
+if [ -f "$REPO_DIR/user/airlink.py" ]; then
+    mkdir -p "$HOME/.local/bin"
+    cp "$REPO_DIR/user/airlink.py" "$HOME/.local/bin/airlink"
+    chmod +x "$HOME/.local/bin/airlink"
+    if command -v termux-fix-shebang >/dev/null 2>&1; then
+        termux-fix-shebang "$HOME/.local/bin/airlink" >/dev/null 2>&1 || true
+    fi
+    for link_name in url-heal qr auth-code remurl; do
+        ln -sf "$HOME/.local/bin/airlink" "$HOME/.local/bin/$link_name"
+    done
+    success "airlink (and url-heal, qr, auth-code) deployed to ~/.local/bin/"
 fi
 
 
