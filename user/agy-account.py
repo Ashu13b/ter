@@ -5,6 +5,7 @@ agy-account: Manage and rotate Antigravity CLI (agy) accounts/sessions.
 
 import sys
 import os
+import re
 import json
 import base64
 import shutil
@@ -15,6 +16,31 @@ from pathlib import Path
 AGY_DIR = Path(os.environ.get("AGY_DIR", Path.home() / ".gemini" / "antigravity-cli"))
 TOKEN_FILE = AGY_DIR / "antigravity-oauth-token"
 ACCOUNTS_DIR = AGY_DIR / "accounts"
+
+
+def atomic_copy(src: Path, dst: Path, mode: int = 0o600):
+    """Safely copy a file using a temporary file in destination dir and atomic rename."""
+    dst = dst.resolve()
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    temp_dst = dst.parent / f".tmp_{dst.name}_{os.getpid()}"
+    try:
+        shutil.copy2(src, temp_dst)
+        try:
+            os.chmod(temp_dst, mode)
+        except OSError:
+            pass
+        os.replace(temp_dst, dst)
+    finally:
+        if temp_dst.exists():
+            try:
+                temp_dst.unlink()
+            except OSError:
+                pass
+
+
+def is_valid_alias(name: str) -> bool:
+    """Ensure account alias contains only safe characters and cannot traverse directories."""
+    return bool(name and re.match(r"^[A-Za-z0-9_\-]+$", name) and not name.startswith("."))
 
 
 def extract_email(data: dict) -> str:
@@ -95,14 +121,19 @@ def save_current(name=None):
         return False
 
     account_name = name or get_default_alias(info.get("email", ""))
-    dest_dir = ACCOUNTS_DIR / account_name
+    if not is_valid_alias(account_name):
+        print(f"❌ Invalid account alias '{account_name}'. Use only alphanumeric characters, underscores, and hyphens.")
+        return False
+
+    ACCOUNTS_DIR.mkdir(parents=True, exist_ok=True)
+    dest_dir = (ACCOUNTS_DIR / account_name).resolve()
+    if dest_dir.parent != ACCOUNTS_DIR.resolve():
+        print(f"❌ Security violation: account path outside {ACCOUNTS_DIR}")
+        return False
+
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest_file = dest_dir / "antigravity-oauth-token"
-    shutil.copy2(TOKEN_FILE, dest_file)
-    try:
-        os.chmod(dest_file, 0o600)
-    except OSError:
-        pass
+    atomic_copy(TOKEN_FILE, dest_file, mode=0o600)
     print(f"✅ Saved account '{account_name}' ({info['email']}) to {dest_dir}")
     return True
 
@@ -115,21 +146,24 @@ def save_active_back_to_profile():
     if not active_info or "email" not in active_info:
         return
     active_email = active_info["email"]
+    accounts_dir_resolved = ACCOUNTS_DIR.resolve()
     for name, info in list_saved_accounts():
-        if info and info.get("email") == active_email:
-            dest_file = ACCOUNTS_DIR / name / "antigravity-oauth-token"
-            shutil.copy2(TOKEN_FILE, dest_file)
-            try:
-                os.chmod(dest_file, 0o600)
-            except OSError:
-                pass
-            break
+        if info and info.get("email") == active_email and is_valid_alias(name):
+            dest_file = (ACCOUNTS_DIR / name / "antigravity-oauth-token").resolve()
+            if dest_file.parent.parent == accounts_dir_resolved:
+                atomic_copy(TOKEN_FILE, dest_file, mode=0o600)
+                break
 
 
 def switch_to(target_name):
-    target_dir = ACCOUNTS_DIR / target_name
-    target_token = target_dir / "antigravity-oauth-token"
-    if not target_token.is_file():
+    # Direct lookup if valid alias format
+    target_token = None
+    if is_valid_alias(target_name):
+        candidate = (ACCOUNTS_DIR / target_name / "antigravity-oauth-token").resolve()
+        if candidate.parent.parent == ACCOUNTS_DIR.resolve() and candidate.is_file():
+            target_token = candidate
+
+    if not target_token:
         # Match by alias, email, or prefix
         matched = None
         for name, info in list_saved_accounts():
@@ -138,20 +172,18 @@ def switch_to(target_name):
                 if name == target_name or email == target_name or email.startswith(target_name):
                     matched = name
                     break
-        if matched:
-            target_token = ACCOUNTS_DIR / matched / "antigravity-oauth-token"
-            target_name = matched
-        else:
-            print(f"❌ Account '{target_name}' not found in {ACCOUNTS_DIR}")
-            return False
+        if matched and is_valid_alias(matched):
+            candidate = (ACCOUNTS_DIR / matched / "antigravity-oauth-token").resolve()
+            if candidate.parent.parent == ACCOUNTS_DIR.resolve() and candidate.is_file():
+                target_token = candidate
+                target_name = matched
+
+    if not target_token or not target_token.is_file():
+        print(f"❌ Account '{target_name}' not found in {ACCOUNTS_DIR}")
+        return False
 
     save_active_back_to_profile()
-    TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(target_token, TOKEN_FILE)
-    try:
-        os.chmod(TOKEN_FILE, 0o600)
-    except OSError:
-        pass
+    atomic_copy(target_token, TOKEN_FILE, mode=0o600)
     info = get_token_info(TOKEN_FILE)
     print(f"🔄 Switched to account '{target_name}' ({info.get('email', 'unknown') if info else 'unknown'})")
     return True
@@ -192,34 +224,55 @@ def parse_host_port(target=None, port_override=None):
         host = parts[0]
         port = port or parts[1]
 
+    if port is not None:
+        try:
+            port_num = int(port)
+            if not (1 <= port_num <= 65535):
+                raise ValueError(f"Port number out of range: {port}")
+            port = str(port_num)
+        except ValueError:
+            raise ValueError(f"Invalid port: {port}")
+
+    if not re.match(r"^[A-Za-z0-9_.\-@\[\]]+$", host):
+        raise ValueError(f"Invalid host address or alias: {host}")
+
     return host, port
 
 
 def sync_accounts(target=None, port=None):
-    host, port = parse_host_port(target, port_override=port)
+    try:
+        host, port = parse_host_port(target, port_override=port)
+    except ValueError as e:
+        print(f"❌ {e}")
+        return False
+
     port_label = f" (port {port})" if port else ""
     print(f"📡 Syncing accounts to {host}{port_label}...")
     save_active_back_to_profile()
 
-    ssh_opts = f"-p {port} " if port else ""
-    scp_opts = f"-P {port} " if port else ""
+    ssh_base = ["ssh"]
+    scp_base = ["scp"]
+    if port:
+        ssh_base.extend(["-p", str(port)])
+        scp_base.extend(["-P", str(port)])
 
-    cmd_mkdir = f"ssh {ssh_opts}{host} 'mkdir -p ~/.gemini/antigravity-cli/accounts ~/.local/bin'"
-    res = subprocess.run(cmd_mkdir, shell=True)
+    # Check connection and create remote directories safely without shell=True
+    cmd_mkdir = ssh_base + [host, "mkdir -p ~/.gemini/antigravity-cli/accounts ~/.local/bin"]
+    res = subprocess.run(cmd_mkdir)
     if res.returncode != 0:
         print(f"❌ Could not reach {host} via SSH.")
         return False
 
     ACCOUNTS_DIR.mkdir(parents=True, exist_ok=True)
-    cmd_scp = f"scp {scp_opts}-r {ACCOUNTS_DIR}/. {host}:~/.gemini/antigravity-cli/accounts/"
-    subprocess.run(cmd_scp, shell=True)
+    cmd_scp = scp_base + ["-r", f"{ACCOUNTS_DIR}/.", f"{host}:~/.gemini/antigravity-cli/accounts/"]
+    subprocess.run(cmd_scp)
     if TOKEN_FILE.is_file():
-        cmd_scp_token = f"scp {scp_opts}{TOKEN_FILE} {host}:~/.gemini/antigravity-cli/antigravity-oauth-token"
-        subprocess.run(cmd_scp_token, shell=True)
+        cmd_scp_token = scp_base + [str(TOKEN_FILE), f"{host}:~/.gemini/antigravity-cli/antigravity-oauth-token"]
+        subprocess.run(cmd_scp_token)
 
     script_path = Path(__file__).resolve()
-    cmd_scp_script = f"scp {scp_opts}{script_path} {host}:~/.local/bin/agy-account"
-    subprocess.run(cmd_scp_script, shell=True)
+    cmd_scp_script = scp_base + [str(script_path), f"{host}:~/.local/bin/agy-account"]
+    subprocess.run(cmd_scp_script)
 
     remote_setup = (
         "chmod +x ~/.local/bin/agy-account && "
@@ -231,15 +284,22 @@ def sync_accounts(target=None, port=None):
         "sed -i '1s|^#!.*python.*|#!/usr/bin/env python3|' ~/.local/bin/agy-account 2>/dev/null || true; "
         "fi"
     )
-    cmd_setup = f"ssh {ssh_opts}{host} {shlex.quote(remote_setup)}"
-    subprocess.run(cmd_setup, shell=True)
+    cmd_setup = ssh_base + [host, remote_setup]
+    subprocess.run(cmd_setup)
 
     print(f"✅ Synced all accounts and tool to {host}!")
     return True
 
 
 def delete_account(name):
-    target = ACCOUNTS_DIR / name
+    if not is_valid_alias(name):
+        print(f"❌ Invalid account alias '{name}'.")
+        return False
+    ACCOUNTS_DIR.mkdir(parents=True, exist_ok=True)
+    target = (ACCOUNTS_DIR / name).resolve()
+    if target.parent != ACCOUNTS_DIR.resolve():
+        print(f"❌ Security violation: account path outside {ACCOUNTS_DIR}")
+        return False
     if target.is_dir():
         shutil.rmtree(target)
         print(f"🗑️ Removed saved account profile '{name}'")

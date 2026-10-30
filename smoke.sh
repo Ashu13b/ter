@@ -668,11 +668,51 @@ check_agy_account() {
         return
     fi
 
-    # Test parse_host_port behavior
+    # Path traversal protection tests
+    if AGY_DIR="$test_dir" python3 "$REPO/user/agy-account.py" rm .. >/dev/null 2>&1; then
+        fail "agy-account did not reject path traversal in rm"
+        rm -rf "$test_dir"
+        return
+    fi
+    if [ ! -d "$test_dir" ]; then
+        fail "agy-account rm .. deleted parent directory!"
+        return
+    fi
+
+    if AGY_DIR="$test_dir" python3 "$REPO/user/agy-account.py" save "../../escaped" >/dev/null 2>&1; then
+        fail "agy-account did not reject path traversal in save"
+        rm -rf "$test_dir"
+        return
+    fi
+
+    # Test parse_host_port behavior and command injection protection
     local parsed_host
     parsed_host=$(python3 -c "import sys; sys.path.insert(0, '$REPO/user'); from importlib.machinery import SourceFileLoader; mod = SourceFileLoader('agy', '$REPO/user/agy-account.py').load_module(); print(mod.parse_host_port('')[0], mod.parse_host_port('myhost:2222')[1])" 2>/dev/null)
     if [ "$parsed_host" != "ubu 2222" ]; then
         fail "agy-account host/port parsing"
+        rm -rf "$test_dir"
+        return
+    fi
+
+    local injection_check
+    injection_check=$(python3 -c "
+import sys; sys.path.insert(0, '$REPO/user')
+from importlib.machinery import SourceFileLoader
+mod = SourceFileLoader('agy', '$REPO/user/agy-account.py').load_module()
+try:
+    mod.parse_host_port('ubu; bad')
+    print('FAIL_HOST')
+except ValueError:
+    pass
+try:
+    mod.parse_host_port('ubu', port_override='bad_port')
+    print('FAIL_PORT')
+except ValueError:
+    pass
+print('OK')
+" 2>/dev/null)
+    if [ "$injection_check" != "OK" ]; then
+        fail "agy-account parse_host_port command injection check ($injection_check)"
         rm -rf "$test_dir"
         return
     fi
@@ -701,6 +741,67 @@ check_airlink() {
         fail "auth-code extraction ($code)"
         return
     fi
+
+    # Test server token authorization and code validation
+    local srv_test
+    srv_test=$(python3 -c "
+import sys, urllib.request, urllib.parse
+sys.path.insert(0, '$REPO/user')
+import airlink
+recv = []
+srv = airlink.AirLinkServer('https://example.com', 'test', lambda c: recv.append(c))
+srv.start()
+try:
+    # 1. Unauthenticated GET -> 403
+    try:
+        urllib.request.urlopen(f'http://127.0.0.1:{srv.port}/')
+        print('FAIL_GET_NOAUTH')
+        sys.exit(1)
+    except urllib.error.HTTPError as e:
+        if e.code != 403:
+            print(f'FAIL_GET_CODE_{e.code}')
+            sys.exit(1)
+    # 2. Authenticated GET -> 200
+    with urllib.request.urlopen(f'http://127.0.0.1:{srv.port}/?token={srv.auth_token}') as res:
+        if res.status != 200:
+            print('FAIL_GET_AUTH')
+            sys.exit(1)
+    # 3. Unauthenticated POST -> 403
+    data = urllib.parse.urlencode({'code': '4/0AX4XfWh1234567890abcdef'}).encode()
+    try:
+        urllib.request.urlopen(urllib.request.Request(f'http://127.0.0.1:{srv.port}/submit', data=data))
+        print('FAIL_POST_NOAUTH')
+        sys.exit(1)
+    except urllib.error.HTTPError as e:
+        if e.code != 403:
+            print(f'FAIL_POST_CODE_{e.code}')
+            sys.exit(1)
+    # 4. Authenticated POST with invalid payload -> 400
+    data = urllib.parse.urlencode({'token': srv.auth_token, 'code': 'rm -rf /\necho pwned'}).encode()
+    try:
+        urllib.request.urlopen(urllib.request.Request(f'http://127.0.0.1:{srv.port}/submit', data=data))
+        print('FAIL_POST_BADCODE')
+        sys.exit(1)
+    except urllib.error.HTTPError as e:
+        if e.code != 400:
+            print(f'FAIL_POST_BADCODE_{e.code}')
+            sys.exit(1)
+    # 5. Authenticated valid POST -> 200
+    valid_code = '4/0AX4XfWh1234567890abcdef'
+    data = urllib.parse.urlencode({'token': srv.auth_token, 'code': valid_code}).encode()
+    with urllib.request.urlopen(urllib.request.Request(f'http://127.0.0.1:{srv.port}/submit', data=data)) as res:
+        if res.status != 200 or recv != [valid_code]:
+            print('FAIL_POST_VALID')
+            sys.exit(1)
+    print('OK')
+finally:
+    srv.stop()
+" 2>/dev/null)
+    if [ "$srv_test" != "OK" ]; then
+        fail "airlink gateway server security check ($srv_test)"
+        return
+    fi
+
     echo "  [ ok ] airlink suite operations"
 }
 

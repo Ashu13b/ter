@@ -9,11 +9,13 @@ Provides standalone modular tools and unified orchestration:
 """
 
 import argparse
+import hmac
 import http.server
 import json
 import os
 import pty
 import re
+import secrets
 import select
 import shlex
 import shutil
@@ -178,17 +180,19 @@ def extract_auth_code(text: str) -> str:
     # 1. Search for code= parameter in callback URL
     m = re.search(r"[?&]code=([^&\s]+)", clean)
     if m:
-        return urllib.parse.unquote(m.group(1)).strip()
+        val = urllib.parse.unquote(m.group(1)).strip()
+        if re.match(r"^[A-Za-z0-9_\-./+=]{10,512}$", val):
+            return val
 
     # 2. Search for Google OAuth code pattern: 4/0A... or 4/...
-    m = re.search(r"4/[A-Za-z0-9_\-]+", clean)
+    m = re.search(r"4/[A-Za-z0-9_\-]{10,512}", clean)
     if m:
         return m.group(0).strip()
 
-    # 3. If raw string with reasonable length and valid token characters
-    stripped = re.sub(r"\s+", "", clean)
-    if len(stripped) >= 15 and re.match(r"^[A-Za-z0-9_\-./+=]+$", stripped):
-        return stripped
+    # 3. Raw authorization token (must not contain internal whitespace or control characters)
+    if not re.search(r"\s", clean):
+        if len(clean) >= 10 and re.match(r"^[A-Za-z0-9_\-./+=]{10,512}$", clean):
+            return clean
 
     return ""
 
@@ -223,7 +227,44 @@ def render_qr(data: str, invert: bool = True, border: int = 1) -> bool:
 
 def get_lan_ip() -> str:
     """Discover local reachable IP (Wi-Fi, hotspot gateway, or primary route)."""
-    # 1. Try public UDP probe to find default route interface IP
+    # 1. Hotspot & Wi-Fi interfaces (highest priority for cross-phone connectivity)
+    try:
+        res = subprocess.run(["ifconfig"], capture_output=True, text=True, timeout=2)
+        out = res.stdout or ""
+        blocks = out.split("\n\n")
+        ifaces = {}
+        for block in blocks:
+            lines = block.strip().splitlines()
+            if not lines:
+                continue
+            name = lines[0].split(":")[0].strip()
+            m = re.search(r"inet\s+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)", block)
+            if m:
+                ifaces[name] = m.group(1)
+
+        # Hotspot & Wi-Fi interfaces
+        for pref in ["ap0", "wlan0", "swlan0", "rndis0", "wlan1"]:
+            if pref in ifaces and not ifaces[pref].startswith("127."):
+                return ifaces[pref]
+
+        # Standard Android hotspot IP 192.168.43.1 or private 192.168.x.x
+        for name, ip in ifaces.items():
+            if ip.startswith("192.168.43.") or ip.startswith("192.168."):
+                return ip
+
+        # Tailscale VPN
+        for name, ip in ifaces.items():
+            if ip.startswith("100.") or "tailscale" in name:
+                return ip
+
+        # Non-cellular private LAN (e.g. 10.x, 172.16-31.x)
+        for name, ip in ifaces.items():
+            if not name.startswith("rmnet") and not ip.startswith("127."):
+                return ip
+    except Exception:
+        pass
+
+    # 2. Outbound route socket probe (fallback)
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
@@ -231,22 +272,6 @@ def get_lan_ip() -> str:
         s.close()
         if ip and not ip.startswith("127."):
             return ip
-    except Exception:
-        pass
-
-    # 2. Check Android standard hotspot IP
-    try:
-        res = subprocess.run(["ifconfig"], capture_output=True, text=True, timeout=2)
-        out = res.stdout or ""
-        # Match wlan0 or ap0 or rndis0
-        m = re.search(r"(?:wlan0|ap0|swlan0|rndis0)\s+.*?inet\s+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)", out, re.DOTALL)
-        if m:
-            return m.group(1)
-        # Any non-loopback inet
-        all_inets = re.findall(r"inet\s+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)", out)
-        for cand in all_inets:
-            if not cand.startswith("127."):
-                return cand
     except Exception:
         pass
 
@@ -260,13 +285,28 @@ def get_lan_ip() -> str:
 class AirLinkGatewayHandler(http.server.BaseHTTPRequestHandler):
     target_url: str = ""
     command_name: str = "Command"
+    auth_token: str = ""
     on_code_callback = None
 
     def log_message(self, format, *args):
         # Quiet HTTP access logging
         pass
 
+    def _verify_token(self, supplied_token: str) -> bool:
+        return bool(self.auth_token) and hmac.compare_digest(supplied_token or "", self.auth_token)
+
     def do_GET(self):
+        parsed = urllib.parse.urlparse(self.path)
+        qs = urllib.parse.parse_qs(parsed.query)
+        supplied_token = qs.get("token", [""])[0]
+
+        if not self._verify_token(supplied_token):
+            self.send_response(403)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(b"403 Forbidden: Invalid or missing AirLink session token.\n")
+            return
+
         html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -373,6 +413,7 @@ class AirLinkGatewayHandler(http.server.BaseHTTPRequestHandler):
   <div class="divider"><span>Step 2</span></div>
   <p>When login completes, copy the code (or redirect link) and paste below:</p>
   <form method="POST" action="/submit">
+    <input type="hidden" name="token" value="{self.auth_token}">
     <textarea name="code" placeholder="Paste authorization code or localhost URL here..." required></textarea>
     <button class="btn-submit" type="submit">🚀 Deliver Code to Terminal</button>
   </form>
@@ -385,14 +426,37 @@ class AirLinkGatewayHandler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(html.encode("utf-8"))
 
     def do_POST(self):
-        if self.path == "/submit":
+        parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == "/submit":
             length = int(self.headers.get("Content-Length", 0))
+            if length <= 0 or length > 8192:
+                self.send_response(400)
+                self.end_headers()
+                return
+
             body = self.rfile.read(length).decode("utf-8", errors="ignore")
             params = urllib.parse.parse_qs(body)
-            raw_input = params.get("code", [""])[0]
-            clean_code = extract_auth_code(raw_input) or raw_input.strip()
+            supplied_token = params.get("token", [""])[0] or urllib.parse.parse_qs(parsed.query).get("token", [""])[0]
 
-            if clean_code and self.on_code_callback:
+            if not self._verify_token(supplied_token):
+                self.send_response(403)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(b"403 Forbidden: Invalid or missing AirLink session token.\n")
+                return
+
+            raw_input = params.get("code", [""])[0]
+            clean_code = extract_auth_code(raw_input)
+
+            # Strict validation: must match valid token character set and bounds, no control characters
+            if not clean_code or not re.match(r"^[A-Za-z0-9_\-./+=]{10,512}$", clean_code):
+                self.send_response(400)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(b"<html><body style=\"background:#101216;color:#f87171;padding:30px;font-family:sans-serif;\"><h2>400 Bad Request</h2><p>Invalid authorization code format. Please copy the code and try again.</p></body></html>")
+                return
+
+            if self.on_code_callback:
                 self.on_code_callback(clean_code)
 
             resp = """<!DOCTYPE html>
@@ -425,19 +489,22 @@ class AirLinkServer:
         self.target_url = target_url
         self.command_name = command_name
         self.on_code_received = on_code_received
+        self.auth_token = secrets.token_urlsafe(16)
         self.server = None
         self.thread = None
         self.port = 8888
         self.lan_ip = get_lan_ip()
 
     def start(self):
+        callback_func = staticmethod(self.on_code_received) if self.on_code_received else None
         handler_cls = type(
             "CustomAirLinkHandler",
             (AirLinkGatewayHandler,),
             {
                 "target_url": self.target_url,
                 "command_name": self.command_name,
-                "on_code_callback": self.on_code_received,
+                "on_code_callback": callback_func,
+                "auth_token": self.auth_token,
             },
         )
         for attempt_port in range(8888, 8910):
@@ -453,7 +520,7 @@ class AirLinkServer:
 
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
-        return f"http://{self.lan_ip}:{self.port}"
+        return f"http://{self.lan_ip}:{self.port}/?token={self.auth_token}"
 
     def stop(self):
         if self.server:
@@ -562,14 +629,19 @@ def run_airlink(argv: list[str]) -> int:
     gateway_server = None
 
     def deliver_code_to_proc(code: str):
-        if code and not code_injected.is_set():
-            code_injected.set()
-            try:
-                os.write(master_fd, (code.strip() + "\n").encode("utf-8"))
-                sys.stdout.write(f"\n\033[1;32m✔ Code delivered to terminal!\033[0m\n")
-                sys.stdout.flush()
-            except OSError:
-                pass
+        if not code or code_injected.is_set():
+            return
+        safe_code = code.strip()
+        # Defense-in-depth: only permit standard OAuth code characters
+        if not re.match(r"^[A-Za-z0-9_\-./+=]{10,512}$", safe_code):
+            return
+        code_injected.set()
+        try:
+            os.write(master_fd, (safe_code + "\n").encode("utf-8"))
+            sys.stdout.write(f"\n\033[1;32m✔ Code delivered to terminal!\033[0m\n")
+            sys.stdout.flush()
+        except OSError:
+            pass
 
     def on_url_found(url: str):
         nonlocal gateway_server
