@@ -6,6 +6,7 @@ All notable changes to TER are documented here. Older history lives in
 ## [1.5] — 2026-08-22
 
 ### Added
+- `agy-account` module (`user/agy-account.py`, `user/agy-account.sh`): multi-account manager and session rotator for Antigravity CLI (`agy`); integrated into `ter account`, `agy account`, `welcome` dashboard, and deployed to `~/.local/bin/agy-account`.
 - `ter theme next` / `rotate` — cycles through palettes with wrap-around;
   menu gains `[R]` and five new themes: Nord Frost (j), Ocean Deep (k),
   Rose Quartz (l), Matrix Emerald (m), Sunset Ember (n). Theme definitions

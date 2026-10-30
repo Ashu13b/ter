@@ -4,7 +4,7 @@
 set -u
 
 REPO="$(cd "$(dirname "$0")" && pwd)"
-EXPECT="re cls scan adbcon optimize tabname apps ter dvop adb-apk codext app"
+EXPECT="re cls scan adbcon optimize tabname apps ter dvop adb-apk codext app agy-account"
 FAIL=0
 SMOKE_OUTPUT=$(mktemp "${TMPDIR:-/tmp}/ter-smoke.XXXXXX") || exit 1
 trap 'rm -f "$SMOKE_OUTPUT"' EXIT
@@ -68,12 +68,12 @@ check_isolated_install() {
         if [ "$shell" = "bash" ]; then
             HOME="$test_home" TMUX=ter-smoke TER_LOADED=1 TER_LOADED_PID=1 \
                 bash --noprofile --norc -c \
-                'source "$HOME/.bashrc"; type ter >/dev/null && type apps >/dev/null && type codext >/dev/null' \
+                'source "$HOME/.bashrc"; type ter >/dev/null && type apps >/dev/null && type codext >/dev/null && type agy-account >/dev/null' \
                 || loader_rc=1
         else
             HOME="$test_home" TMUX=ter-smoke TER_LOADED=1 TER_LOADED_PID=1 \
                 zsh -f -c \
-                'source "$HOME/.zshrc"; type ter >/dev/null && type apps >/dev/null && type codext >/dev/null' \
+                'source "$HOME/.zshrc"; type ter >/dev/null && type apps >/dev/null && type codext >/dev/null && type agy-account >/dev/null' \
                 || loader_rc=1
         fi
     done
@@ -596,6 +596,75 @@ check_tab_title() {
     rm -rf "$test_home"
 }
 
+check_agy_account() {
+    local test_dir
+    test_dir=$(mktemp -d "${TMPDIR:-/tmp}/ter-agy.XXXXXX") || { fail "could not create agy test dir"; return; }
+    local token_file="$test_dir/antigravity-oauth-token"
+    local accounts_dir="$test_dir/accounts"
+
+    # Test isolated save, list, switch, next, rm
+    mkdir -p "$accounts_dir"
+    printf '{"id_token_email": "acc1@example.com", "token": {"expiry": "2026-10-30T10:00:00Z", "refresh_token": "ref1"}}' > "$token_file"
+
+    if ! AGY_DIR="$test_dir" python3 "$REPO/user/agy-account.py" save acc1 >/dev/null 2>&1; then
+        fail "agy-account save"
+        rm -rf "$test_dir"
+        return
+    fi
+
+    if [ ! -f "$accounts_dir/acc1/antigravity-oauth-token" ]; then
+        fail "agy-account saved file missing"
+        rm -rf "$test_dir"
+        return
+    fi
+
+    # Save second account
+    printf '{"id_token_email": "acc2@example.com", "token": {"expiry": "2026-10-30T10:00:00Z", "refresh_token": "ref2"}}' > "$token_file"
+    AGY_DIR="$test_dir" python3 "$REPO/user/agy-account.py" save acc2 >/dev/null 2>&1
+
+    # Switch back to acc1
+    if ! AGY_DIR="$test_dir" python3 "$REPO/user/agy-account.py" switch acc1 >/dev/null 2>&1; then
+        fail "agy-account switch"
+        rm -rf "$test_dir"
+        return
+    fi
+
+    if ! grep -q "acc1@example.com" "$token_file"; then
+        fail "agy-account active token not switched"
+        rm -rf "$test_dir"
+        return
+    fi
+
+    # Rotate (next) -> should switch to acc2
+    if ! AGY_DIR="$test_dir" python3 "$REPO/user/agy-account.py" next >/dev/null 2>&1; then
+        fail "agy-account next"
+        rm -rf "$test_dir"
+        return
+    fi
+
+    if ! grep -q "acc2@example.com" "$token_file"; then
+        fail "agy-account active token not rotated"
+        rm -rf "$test_dir"
+        return
+    fi
+
+    # Delete acc1
+    if ! AGY_DIR="$test_dir" python3 "$REPO/user/agy-account.py" rm acc1 >/dev/null 2>&1; then
+        fail "agy-account rm"
+        rm -rf "$test_dir"
+        return
+    fi
+
+    if [ -d "$accounts_dir/acc1" ]; then
+        fail "agy-account rm directory not deleted"
+        rm -rf "$test_dir"
+        return
+    fi
+
+    echo "  [ ok ] agy-account operations"
+    rm -rf "$test_dir"
+}
+
 echo "TER smoke test — $REPO"
 check_syntax
 check_isolated_install
@@ -604,6 +673,7 @@ check_adb_validation
 check_sync_paths
 check_codext_scope
 check_tab_title
+check_agy_account
 # zsh doesn't support --noprofile; use -f instead.
 run_in bash "bash"
 if command -v zsh >/dev/null 2>&1; then

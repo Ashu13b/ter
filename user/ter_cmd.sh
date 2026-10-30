@@ -219,6 +219,7 @@ EOF
         echo "  ter info      One-screen status (version, drift, pkgs)"
         echo "  ter shortcut  Pin shortcuts to home screen (add | list | rm)"
         echo "  ter perms     Grant Android/ColorOS permissions for foreground shortcuts"
+        echo "  ter account   Antigravity CLI account switcher & rotator (or agy-account)"
         echo "  re            Reload shell"
         echo "  tabname       Rename tab"
         echo "  optimize      BG stability & RAM purge"
@@ -230,6 +231,13 @@ EOF
         echo ""
         echo -e "\033[1;36m  📖 Full manual: cat ~/.shell.d/docs/cli_manual.md\033[0m"
         echo ""
+        return
+    fi
+
+    # Manage Antigravity CLI accounts: ter account ... or ter agy ...
+    if [ "$1" = "account" ] || [ "$1" = "agy" ]; then
+        shift
+        agy-account "$@"
         return
     fi
 
@@ -532,6 +540,15 @@ EOF
                 [ "$dvop_state" = "1" ] && dvop_state="ON" || dvop_state="OFF"
             fi
             echo -e "  \033[1;33madb\033[0m       $adb_state  (dvop=$dvop_state)"
+        fi
+        # Active agy account
+        local agy_token="${AGY_DIR:-$HOME/.gemini/antigravity-cli}/antigravity-oauth-token"
+        if [ -f "$agy_token" ] && command -v jq >/dev/null 2>&1; then
+            local agy_email
+            agy_email=$(jq -r '.id_token_email // .email // empty' "$agy_token" 2>/dev/null)
+            if [ -n "$agy_email" ]; then
+                echo -e "  \033[1;33magy\033[0m       $agy_email"
+            fi
         fi
         echo ""
         return

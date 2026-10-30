@@ -21,6 +21,7 @@ Welcome to the command line interface guide for the unified **TER OS** Termux en
 | `alm` | Utility | Interactive shell alias manager (list, add, edit, reload) | `alm -h` / `alm --help` |
 | `apps` | Registry | Termux plug-in app registry loader and manifest visualizer | `apps -h` |
 | `codext` | AI / Network | OpenAI Codex launcher with auto-tinyproxy and Termux TLS cert fixes | `codext --help` |
+| `agy-account` | AI / Account | Antigravity CLI account switcher, profile manager, and session rotator | `agy-account -h` |
 | `ter` | System | Master Controller dashboard and interactive theme switcher | `ter -h` / `ter --help` |
 
 ---
@@ -245,6 +246,35 @@ ter theme
 
 # Toggle autostart of tmux session
 ter toggle tmux
+```
+
+### 🤖 Antigravity CLI Account Manager (`agy-account` / `ter account`)
+Manages and rotates multiple Antigravity CLI (`agy`) OAuth sessions and accounts without re-authenticating.
+
+```bash
+# Display account status & list saved profiles
+agy-account
+agy-account list
+
+# Save current active session under an alias (e.g. work, pro, personal)
+agy-account save work
+
+# Switch active session to a saved account by alias or email
+agy-account switch work
+agy-account switch user@gmail.com
+
+# Rotate to the next saved account profile (round-robin)
+agy-account next
+
+# Remove a saved account profile
+agy-account rm old-alias
+
+# Sync saved accounts to another machine (default: tailscale-termux)
+agy-account sync [host]
+
+# Also accessible directly via 'agy' or 'ter':
+agy account list
+ter account next
 ```
 
 ---

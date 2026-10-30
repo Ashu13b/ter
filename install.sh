@@ -194,6 +194,7 @@ snapshot_aux_file "$HOME/.termux/termux.properties"
 snapshot_aux_file "$HOME/.tmux.conf"
 snapshot_aux_file "$HOME/.bashrc"
 snapshot_aux_file "$HOME/.zshrc"
+snapshot_aux_file "$HOME/.local/bin/agy-account"
 snapshot_aux_file "$REPO_DIR/motd"
 if [ "${TER_SKIP_MOTD:-0}" != "1" ] && [ -e "/data/data/com.termux/files/usr/etc/motd" ]; then
     snapshot_aux_file "/data/data/com.termux/files/usr/etc/motd"
@@ -336,6 +337,16 @@ printf '%s\n' "$REPO_DIR" > "$TARGET/.ter-repo"
 # TER's own manifest — read by welcome.sh to render the command surface.
 if [ -f "$REPO_DIR/manifest.json" ]; then
     cp "$REPO_DIR/manifest.json" "$TARGET/manifest.json"
+fi
+
+if [ -f "$REPO_DIR/user/agy-account.py" ]; then
+    mkdir -p "$HOME/.local/bin"
+    cp "$REPO_DIR/user/agy-account.py" "$HOME/.local/bin/agy-account"
+    chmod +x "$HOME/.local/bin/agy-account"
+    if command -v termux-fix-shebang >/dev/null 2>&1; then
+        termux-fix-shebang "$HOME/.local/bin/agy-account" >/dev/null 2>&1 || true
+    fi
+    success "agy-account deployed to ~/.local/bin/agy-account"
 fi
 
 

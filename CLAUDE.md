@@ -30,6 +30,7 @@ Third-party projects register under `~/.shell.d/apps/<name>/` with a `manifest.j
 - `user/optimize.py` + `user/optimize.sh` — background stability engine. `user/z-run.sh` runs the compact one-line status on every interactive startup.
 - `user/adb_utils.sh` + `user/adb-audit.py` + `user/adb-manage.py` + `user/adb_common.py` — ADB-over-WiFi tooling. `adb_common.py` is the shared Python helper for the two CLIs.
 - `user/tab_title.sh` — `tabname` function; when inside tmux it calls `tmux rename-window` directly (not escape sequences) to avoid races.
+- `user/agy-account.py` + `user/agy-account.sh` — Antigravity CLI account switcher and session rotator (`agy-account`, `ter account`, `agy account`).
 - `network/scan.sh` (`scan net`, `scan sniff`) and `network/adb_connect.sh` (`adbcon`).
 - `make_motd.py` — regenerates the `motd` banner file.
 
@@ -38,6 +39,7 @@ Third-party projects register under `~/.shell.d/apps/<name>/` with a `manifest.j
 | Path | Written by |
 |---|---|
 | `~/.shell.d/{core,network,user,docs}/` | `install.sh` (rm -rf then cp) |
+| `~/.local/bin/agy-account` | `install.sh` |
 | `~/.termux/termux.properties` | `install.sh` |
 | `~/.tmux.conf` | `install.sh` and `ter theme` |
 | `/data/data/com.termux/files/usr/etc/motd` | `install.sh` (only if writable) |

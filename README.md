@@ -68,6 +68,10 @@ All modular scripts are automatically sourced on terminal startup. They are orga
   * Auto-starts local `tinyproxy` (port 8888).
   * Injects Termux SSL certificate paths (`SSL_CERT_FILE`, `SSL_CERT_DIR`) and proxy environment variables (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `http_proxy`, `https_proxy`, `all_proxy`).
   * Fixes WebSockets and MCP server handshakes for OpenAI Codex CLI.
+* **`agy-account.sh` + `agy-account.py`**: Antigravity CLI (`agy`) multi-account manager:
+  * Rotates and switches saved Google OAuth profiles (`agy-account next`, `agy-account switch <alias>`).
+  * Seamlessly integrated into `ter account` and `agy account` subcommands.
+  * Preserves refreshed tokens and offers cross-device syncing via `agy-account sync`.
 
 ---
 
