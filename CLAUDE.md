@@ -31,6 +31,7 @@ Third-party projects register under `~/.shell.d/apps/<name>/` with a `manifest.j
 - `user/adb_utils.sh` + `user/adb-audit.py` + `user/adb-manage.py` + `user/adb_common.py` — ADB-over-WiFi tooling. `adb_common.py` is the shared Python helper for the two CLIs.
 - `user/tab_title.sh` — `tabname` function; when inside tmux it calls `tmux rename-window` directly (not escape sequences) to avoid races.
 - `user/agy-account.py` + `user/agy-account.sh` — Antigravity CLI account switcher and session rotator (`agy-account`, `ter account`, `agy account`).
+- `user/airlink.py` + `user/airlink.sh` — Cross-device auth bridge, mobile gateway, and URL toolkit (`airlink`, `qr`, `url-heal`, `auth-code`).
 - `network/scan.sh` (`scan net`, `scan sniff`) and `network/adb_connect.sh` (`adbcon`).
 - `make_motd.py` — regenerates the `motd` banner file.
 
@@ -40,6 +41,7 @@ Third-party projects register under `~/.shell.d/apps/<name>/` with a `manifest.j
 |---|---|
 | `~/.shell.d/{core,network,user,docs}/` | `install.sh` (rm -rf then cp) |
 | `~/.local/bin/agy-account` | `install.sh` |
+| `~/.local/bin/{airlink,qr,url-heal,auth-code}` | `install.sh` |
 | `~/.termux/termux.properties` | `install.sh` |
 | `~/.tmux.conf` | `install.sh` and `ter theme` |
 | `/data/data/com.termux/files/usr/etc/motd` | `install.sh` (only if writable) |

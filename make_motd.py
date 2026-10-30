@@ -105,6 +105,7 @@ def main():
     # Explainers
     out.append(row(f"  {ORANGE}[ optimize ]{RESET} {WHITE}Fix BG limits & disable battery restrictions{RESET}"))
     out.append(row(f"  {ORANGE}[ adbcon ]{RESET}   {WHITE}Smart Wizard for Wireless ADB & Pairing{RESET}"))
+    out.append(row(f"  {ORANGE}[ airlink ]{RESET}  {WHITE}Cross-device auth bridge & mobile gateway{RESET}"))
 
     out.append(edge("╰", "─" * INNER_W, "╯"))
 

@@ -72,6 +72,11 @@ All modular scripts are automatically sourced on terminal startup. They are orga
   * Rotates and switches saved Google OAuth profiles (`agy-account next`, `agy-account switch <alias>`).
   * Seamlessly integrated into `ter account` and `agy account` subcommands.
   * Preserves refreshed tokens and offers cross-device syncing via `agy-account sync`.
+* **`airlink.sh` + `airlink.py`**: Cross-device auth bridge & terminal URL toolkit:
+  * `airlink [node] <command...>` — Runs any CLI command locally or on remote VM, intercepts OAuth login URLs before screen soft-wrap occurs, hosts an ephemeral 1-page mobile gateway, auto-delivers authorization codes back to the terminal, and auto-saves tokens with `agy-account`.
+  * `qr [text]` — Universal terminal ASCII QR code engine; zero arguments auto-reads clipboard, repairs broken links, and renders QR code.
+  * `url-heal [url]` — Un-mangles soft-wrapped, newline-split, or WhatsApp-broken URLs into continuous single-line strings.
+  * `auth-code [text]` — Extracts Google OAuth authorization codes (`4/0AX...`) from redirect URLs or messages.
 
 ---
 
