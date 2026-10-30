@@ -8,6 +8,7 @@ import os
 import json
 import base64
 import shutil
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -36,6 +37,17 @@ def extract_email(data: dict) -> str:
     if isinstance(token_obj, dict) and token_obj.get("email"):
         return token_obj["email"]
     return "unknown"
+
+
+def get_default_alias(email: str) -> str:
+    """Generate default alias from first 2 characters of email prefix."""
+    if not email or email == "unknown":
+        return "ac"
+    prefix = email.split("@")[0].lower()
+    clean = "".join(c for c in prefix if c.isalnum())
+    if len(clean) >= 2:
+        return clean[:2]
+    return clean or "ac"
 
 
 def get_token_info(token_path: Path):
@@ -82,7 +94,7 @@ def save_current(name=None):
         print(f"❌ Invalid active token: {info}")
         return False
 
-    account_name = name or (info["email"].split("@")[0] if info["email"] != "unknown" else "account")
+    account_name = name or get_default_alias(info.get("email", ""))
     dest_dir = ACCOUNTS_DIR / account_name
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest_file = dest_dir / "antigravity-oauth-token"
@@ -169,26 +181,58 @@ def rotate():
     return switch_to(next_name)
 
 
-def sync_phone(host="tailscale-termux"):
-    print(f"📡 Syncing accounts to {host}...")
+def parse_host_port(target=None, port_override=None):
+    default_host = os.environ.get("AGY_SYNC_HOST") or os.environ.get("TNL_REMOTE") or "ubu"
+    target_str = (target or default_host).strip()
+    host = target_str
+    port = port_override
+
+    if ":" in target_str and not target_str.startswith("["):
+        parts = target_str.split(":", 1)
+        host = parts[0]
+        port = port or parts[1]
+
+    return host, port
+
+
+def sync_accounts(target=None, port=None):
+    host, port = parse_host_port(target, port_override=port)
+    port_label = f" (port {port})" if port else ""
+    print(f"📡 Syncing accounts to {host}{port_label}...")
     save_active_back_to_profile()
 
-    cmd_mkdir = f"ssh {host} 'mkdir -p ~/.gemini/antigravity-cli/accounts ~/.local/bin'"
+    ssh_opts = f"-p {port} " if port else ""
+    scp_opts = f"-P {port} " if port else ""
+
+    cmd_mkdir = f"ssh {ssh_opts}{host} 'mkdir -p ~/.gemini/antigravity-cli/accounts ~/.local/bin'"
     res = subprocess.run(cmd_mkdir, shell=True)
     if res.returncode != 0:
         print(f"❌ Could not reach {host} via SSH.")
         return False
 
     ACCOUNTS_DIR.mkdir(parents=True, exist_ok=True)
-    cmd_scp = f"scp -P 8022 -r {ACCOUNTS_DIR}/. {host}:~/.gemini/antigravity-cli/accounts/"
+    cmd_scp = f"scp {scp_opts}-r {ACCOUNTS_DIR}/. {host}:~/.gemini/antigravity-cli/accounts/"
     subprocess.run(cmd_scp, shell=True)
     if TOKEN_FILE.is_file():
-        cmd_scp_token = f"scp -P 8022 {TOKEN_FILE} {host}:~/.gemini/antigravity-cli/antigravity-oauth-token"
+        cmd_scp_token = f"scp {scp_opts}{TOKEN_FILE} {host}:~/.gemini/antigravity-cli/antigravity-oauth-token"
         subprocess.run(cmd_scp_token, shell=True)
 
     script_path = Path(__file__).resolve()
-    cmd_scp_script = f"scp -P 8022 {script_path} {host}:~/.local/bin/agy-account && ssh {host} 'chmod +x ~/.local/bin/agy-account; command -v termux-fix-shebang >/dev/null && termux-fix-shebang ~/.local/bin/agy-account || true'"
+    cmd_scp_script = f"scp {scp_opts}{script_path} {host}:~/.local/bin/agy-account"
     subprocess.run(cmd_scp_script, shell=True)
+
+    remote_setup = (
+        "chmod +x ~/.local/bin/agy-account && "
+        "chmod 600 ~/.gemini/antigravity-cli/antigravity-oauth-token 2>/dev/null || true; "
+        "chmod -R 600 ~/.gemini/antigravity-cli/accounts/* 2>/dev/null || true; "
+        "if command -v termux-fix-shebang >/dev/null 2>&1; then "
+        "termux-fix-shebang ~/.local/bin/agy-account; "
+        "else "
+        "sed -i '1s|^#!.*python.*|#!/usr/bin/env python3|' ~/.local/bin/agy-account 2>/dev/null || true; "
+        "fi"
+    )
+    cmd_setup = f"ssh {ssh_opts}{host} {shlex.quote(remote_setup)}"
+    subprocess.run(cmd_setup, shell=True)
 
     print(f"✅ Synced all accounts and tool to {host}!")
     return True
@@ -223,7 +267,7 @@ def cmd_list():
     accounts = list_saved_accounts()
     print(f"\n=== Saved Accounts ({len(accounts)}) ===")
     if not accounts:
-        print("  No saved accounts yet. Run 'agy-account save <name>' to save current session.")
+        print("  No saved accounts yet. Run 'agy-account save [alias]' to save current session.")
     else:
         for name, info in accounts:
             marker = "👉 [ACTIVE]" if info and info.get("email") == active_email else "   "
@@ -234,14 +278,14 @@ def cmd_list():
 
 
 def print_help():
+    default_host = os.environ.get("AGY_SYNC_HOST") or os.environ.get("TNL_REMOTE") or "ubu"
     print("Usage:")
     print("  agy-account list                 List all saved accounts & active status")
-    print("  agy-account save <alias>         Save current session under alias (e.g. pro1, pro2)")
+    print("  agy-account save [alias]         Save current session (defaults to 2-letter email prefix, or custom alias)")
     print("  agy-account switch <alias/email> Switch active session to specified account")
     print("  agy-account next                 Rotate to next saved account (round-robin)")
     print("  agy-account rm <alias>           Remove a saved account profile")
-    print("  agy-account sync [host]          Sync all saved accounts & script to host (default: tailscale-termux)")
-    print("  agy-account sync-phone [host]    Alias for sync")
+    print(f"  agy-account sync [host] [-p port] Sync accounts & tool to remote host (default: {default_host})")
 
 
 def main():
@@ -276,8 +320,20 @@ def main():
         if not delete_account(sys.argv[2]):
             sys.exit(1)
     elif cmd in ["sync", "sync-phone"]:
-        host = sys.argv[2] if len(sys.argv) > 2 else "tailscale-termux"
-        if not sync_phone(host):
+        target = None
+        port = None
+        args = sys.argv[2:]
+        i = 0
+        while i < len(args):
+            arg = args[i]
+            if arg in ["-p", "-P", "--port"]:
+                if i + 1 < len(args):
+                    port = args[i + 1]
+                    i += 1
+            elif not target:
+                target = arg
+            i += 1
+        if not sync_accounts(target, port=port):
             sys.exit(1)
     else:
         print(f"Unknown command: {cmd}")

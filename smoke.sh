@@ -602,28 +602,35 @@ check_agy_account() {
     local token_file="$test_dir/antigravity-oauth-token"
     local accounts_dir="$test_dir/accounts"
 
-    # Test isolated save, list, switch, next, rm
+    # Test isolated save (both bare 2-letter default and custom alias), list, switch, next, rm
     mkdir -p "$accounts_dir"
     printf '{"id_token_email": "acc1@example.com", "token": {"expiry": "2026-10-30T10:00:00Z", "refresh_token": "ref1"}}' > "$token_file"
 
-    if ! AGY_DIR="$test_dir" python3 "$REPO/user/agy-account.py" save acc1 >/dev/null 2>&1; then
-        fail "agy-account save"
+    # Bare save -> should create 'ac' (first 2 letters of acc1)
+    if ! AGY_DIR="$test_dir" python3 "$REPO/user/agy-account.py" save >/dev/null 2>&1; then
+        fail "agy-account bare save"
         rm -rf "$test_dir"
         return
     fi
 
-    if [ ! -f "$accounts_dir/acc1/antigravity-oauth-token" ]; then
-        fail "agy-account saved file missing"
+    if [ ! -f "$accounts_dir/ac/antigravity-oauth-token" ]; then
+        fail "agy-account default 2-letter alias saved file missing"
         rm -rf "$test_dir"
         return
     fi
 
-    # Save second account
+    # Save second account with explicit custom alias
     printf '{"id_token_email": "acc2@example.com", "token": {"expiry": "2026-10-30T10:00:00Z", "refresh_token": "ref2"}}' > "$token_file"
-    AGY_DIR="$test_dir" python3 "$REPO/user/agy-account.py" save acc2 >/dev/null 2>&1
+    AGY_DIR="$test_dir" python3 "$REPO/user/agy-account.py" save custom2 >/dev/null 2>&1
 
-    # Switch back to acc1
-    if ! AGY_DIR="$test_dir" python3 "$REPO/user/agy-account.py" switch acc1 >/dev/null 2>&1; then
+    if [ ! -f "$accounts_dir/custom2/antigravity-oauth-token" ]; then
+        fail "agy-account custom alias saved file missing"
+        rm -rf "$test_dir"
+        return
+    fi
+
+    # Switch back to ac
+    if ! AGY_DIR="$test_dir" python3 "$REPO/user/agy-account.py" switch ac >/dev/null 2>&1; then
         fail "agy-account switch"
         rm -rf "$test_dir"
         return
@@ -635,7 +642,7 @@ check_agy_account() {
         return
     fi
 
-    # Rotate (next) -> should switch to acc2
+    # Rotate (next) -> should switch to custom2
     if ! AGY_DIR="$test_dir" python3 "$REPO/user/agy-account.py" next >/dev/null 2>&1; then
         fail "agy-account next"
         rm -rf "$test_dir"
@@ -648,15 +655,24 @@ check_agy_account() {
         return
     fi
 
-    # Delete acc1
-    if ! AGY_DIR="$test_dir" python3 "$REPO/user/agy-account.py" rm acc1 >/dev/null 2>&1; then
+    # Delete ac
+    if ! AGY_DIR="$test_dir" python3 "$REPO/user/agy-account.py" rm ac >/dev/null 2>&1; then
         fail "agy-account rm"
         rm -rf "$test_dir"
         return
     fi
 
-    if [ -d "$accounts_dir/acc1" ]; then
+    if [ -d "$accounts_dir/ac" ]; then
         fail "agy-account rm directory not deleted"
+        rm -rf "$test_dir"
+        return
+    fi
+
+    # Test parse_host_port behavior
+    local parsed_host
+    parsed_host=$(python3 -c "import sys; sys.path.insert(0, '$REPO/user'); from importlib.machinery import SourceFileLoader; mod = SourceFileLoader('agy', '$REPO/user/agy-account.py').load_module(); print(mod.parse_host_port('')[0], mod.parse_host_port('myhost:2222')[1])" 2>/dev/null)
+    if [ "$parsed_host" != "ubu 2222" ]; then
+        fail "agy-account host/port parsing"
         rm -rf "$test_dir"
         return
     fi

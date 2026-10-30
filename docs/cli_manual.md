@@ -256,7 +256,10 @@ Manages and rotates multiple Antigravity CLI (`agy`) OAuth sessions and accounts
 agy-account
 agy-account list
 
-# Save current active session under an alias (e.g. work, pro, personal)
+# Save current active session:
+# - Bare 'save' automatically uses the first 2 letters of the email prefix (e.g. 'ay', 'gk')
+agy-account save
+# - Or specify a custom alias
 agy-account save work
 
 # Switch active session to a saved account by alias or email
@@ -269,8 +272,10 @@ agy-account next
 # Remove a saved account profile
 agy-account rm old-alias
 
-# Sync saved accounts to another machine (default: tailscale-termux)
-agy-account sync [host]
+# Sync saved accounts and tool to remote host (default: ubu / $TNL_REMOTE via SSH config)
+agy-account sync
+agy-account sync ubu
+agy-account sync phone -p 8022
 
 # Also accessible directly via 'agy' or 'ter':
 agy account list

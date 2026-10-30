@@ -47,6 +47,14 @@ if [ -n "${BASH_VERSION:-}" ]; then
                 fi
                 return 0
                 ;;
+            sync|sync-phone)
+                local hosts="ubu oracle my-tablet"
+                if [ -f "$HOME/.ssh/config" ]; then
+                    hosts=$(grep -E '^Host ' "$HOME/.ssh/config" | grep -v '\*' | awk '{$1=""; print $0}')
+                fi
+                COMPREPLY=($(compgen -W "$hosts" -- "$cur"))
+                return 0
+                ;;
         esac
     }
     complete -F _ter_agy_account_completions agy-account 2>/dev/null || true
@@ -55,12 +63,12 @@ elif [ -n "${ZSH_VERSION:-}" ]; then
         local -a subcmds
         subcmds=(
             'list:List all saved accounts and active status'
-            'save:Save current session under alias'
+            'save:Save current session (2-letter prefix or custom alias)'
             'switch:Switch active session to specified account'
             'next:Rotate to next saved account (round-robin)'
             'rm:Remove a saved account profile'
-            'sync:Sync all saved accounts to remote host'
-            'sync-phone:Sync all saved accounts to remote phone'
+            'sync:Sync all saved accounts to remote host (default: ubu)'
+            'sync-phone:Sync all saved accounts to remote host'
         )
         if (( CURRENT == 2 )); then
             _describe 'subcommand' subcmds
@@ -72,6 +80,13 @@ elif [ -n "${ZSH_VERSION:-}" ]; then
                         local -a accts
                         accts=($(ls -1 "$accounts_dir" 2>/dev/null))
                         _describe 'account' accts
+                    fi
+                    ;;
+                sync|sync-phone)
+                    local -a hosts
+                    if [ -f "$HOME/.ssh/config" ]; then
+                        hosts=($(grep -E '^Host ' "$HOME/.ssh/config" | grep -v '\*' | awk '{$1=""; print $0}'))
+                        _describe 'host' hosts
                     fi
                     ;;
             esac
