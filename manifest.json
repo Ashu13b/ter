@@ -9,6 +9,6 @@
         "ADB": ["adb-sysinfo", "adb-audit", "adb-manage", "adb-apk", "adb-logcat", "adb-screengrab"],
         "STABILITY": ["optimize (status|fix|run|list|log)"],
         "REGISTRY": ["apps list", "alm (alias manager)", "tabname"],
-        "AI": ["agy-account (list|switch|next|save|rm)", "codext"]
+        "AI": ["agy-account (list|switch|next|save|rm)", "codext", "remurl"]
     }
 }

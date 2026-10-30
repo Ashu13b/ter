@@ -227,6 +227,7 @@ EOF
         echo "  app           App manager & APK sideloader"
         echo "  dvop          Developer Options Toggle"
         echo "  scan          Network scan"
+        echo "  remurl        Remote CLI runner & local URL opener (gh, claude, etc.)"
         echo "  apps          App registry"
         echo ""
         echo -e "\033[1;36m  📖 Full manual: cat ~/.shell.d/docs/cli_manual.md\033[0m"

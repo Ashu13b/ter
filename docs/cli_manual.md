@@ -22,6 +22,7 @@ Welcome to the command line interface guide for the unified **TER OS** Termux en
 | `apps` | Registry | Termux plug-in app registry loader and manifest visualizer | `apps -h` |
 | `codext` | AI / Network | OpenAI Codex launcher with auto-tinyproxy and Termux TLS cert fixes | `codext --help` |
 | `agy-account` | AI / Account | Antigravity CLI account switcher, profile manager, and session rotator | `agy-account -h` |
+| `remurl` | AI / Network | Runs any CLI on remote VM, captures login/OAuth URLs, and opens them on phone | `remurl -h` |
 | `ter` | System | Master Controller dashboard and interactive theme switcher | `ter -h` / `ter --help` |
 
 ---
@@ -280,6 +281,27 @@ agy-account sync phone -p 8022
 # Also accessible directly via 'agy' or 'ter':
 agy account list
 ter account next
+```
+
+### 🌐 Universal Remote URL Capturer & Local Opener (`remurl`)
+Runs any command on your remote VM (defaults to active node / `ubu`), captures any authentication, login, or service URL (Google, GitHub, Claude, Tailscale, Hugging Face, Jupyter, Ngrok, etc.), and opens it directly in your phone browser while keeping your terminal interactive for codes and prompts.
+
+```bash
+# Run commands on default node (e.g. ubu / oracle)
+remurl "gh auth login"
+remurl claude login
+remurl "tailscale up"
+remurl "jupyter notebook"
+remurl huggingface-cli login
+
+# Explicit node target
+remurl oracle "gcloud auth login"
+
+# Print URL without opening in browser
+remurl --no-open "gh auth login"
+
+# Run full-screen curses/TUI apps inside remote tmux and attach
+remurl --tmux agy
 ```
 
 ---
