@@ -13,6 +13,7 @@ import atexit
 import base64
 import fcntl
 import hmac
+import html as html_mod
 import http.server
 import json
 import os
@@ -120,10 +121,40 @@ def get_token_info(token_path: Path) -> dict:
 
 def trim_url_artifacts(url: str) -> str:
     """Strip trailing punctuation, quotes, or box borders attached to a URL."""
+    if not url:
+        return ""
+    # Strip any concatenated second unencoded URL (e.g. from TUI redraws)
+    m = re.search(r"https?://", url[8:])
+    if m:
+        url = url[:8 + m.start()]
     url = re.sub(r"[^A-Za-z0-9_\-./~:#@!$&*+,;=%?]+$", "", url)
     while url and url[-1] in ")].'\"`>,;":
         url = url[:-1]
     return url
+
+
+def validate_oauth_url(url: str) -> str:
+    """Ensure OAuth URL has valid structure and deduplicate any repeated query parameters."""
+    if not url or "?" not in url:
+        return url
+    parsed = urllib.parse.urlparse(url)
+    if "accounts.google.com" not in parsed.netloc:
+        return url
+    seen_keys = set()
+    unique_params = []
+    for k, v in urllib.parse.parse_qsl(parsed.query, keep_blank_values=True):
+        if k not in seen_keys:
+            seen_keys.add(k)
+            unique_params.append((k, v))
+    new_query = urllib.parse.urlencode(unique_params, safe="/+:@")
+    return urllib.parse.urlunparse((
+        parsed.scheme,
+        parsed.netloc,
+        parsed.path,
+        parsed.params,
+        new_query,
+        parsed.fragment,
+    ))
 
 
 def heal_url(raw: str) -> str:
@@ -148,7 +179,13 @@ def heal_url(raw: str) -> str:
     tokens = cleaned.split()
     healed = "".join(tokens)
 
-    return trim_url_artifacts(healed)
+    # Truncate if a second unencoded URL was glued onto the string
+    m_dup = re.search(r"https?://", healed[8:])
+    if m_dup:
+        healed = healed[:8 + m_dup.start()]
+
+    healed = trim_url_artifacts(healed)
+    return validate_oauth_url(healed)
 
 
 def extract_url_from_stream(text: str) -> str | None:
@@ -171,8 +208,14 @@ def extract_url_from_stream(text: str) -> str | None:
             for next_line in lines[i + 1:]:
                 if not next_line:
                     break
+                # If next line starts or contains another unencoded URL, STOP immediately
+                if "https://" in next_line or "http://" in next_line:
+                    break
                 # If line contains user-facing instructions, navigation hints, or box borders, stop
-                if any(w in next_line.lower() for w in ["lines)", "navigate", "select", "enter", "shift+", "browser", "code:", "press any key", "signing in"]):
+                if any(w in next_line.lower() for w in [
+                    "lines)", "navigate", "select", "enter", "shift+", "browser",
+                    "code:", "paste", "copy", "press any key", "signing in"
+                ]):
                     break
                 # If line has internal whitespace, it's not a single URL token
                 if " " in next_line:
@@ -180,10 +223,15 @@ def extract_url_from_stream(text: str) -> str | None:
                 # If it contains valid URL characters
                 if re.match(r"^[A-Za-z0-9_\-./~:#@!$&*+,;=%?]+$", next_line):
                     full_url += next_line
+                    # If this line completed state= parameter in Google OAuth URL, stop!
+                    if "accounts.google.com" in full_url and "state=" in full_url:
+                        m_state = re.search(r"[?&]state=([A-Za-z0-9_\-=]{16,})", full_url)
+                        if m_state:
+                            break
                 else:
                     break
 
-            full_url = trim_url_artifacts(full_url)
+            full_url = validate_oauth_url(trim_url_artifacts(full_url))
             if "accounts.google.com" in full_url:
                 # Full Google OAuth URL must contain state=
                 if "state=" in full_url and len(full_url) > 150:
@@ -196,7 +244,7 @@ def extract_url_from_stream(text: str) -> str | None:
     if matches:
         keywords = ["oauth", "login", "auth", "token", "code", "device", "state=", "signin"]
         for m in reversed(matches):
-            trimmed = trim_url_artifacts(m)
+            trimmed = validate_oauth_url(trim_url_artifacts(m))
             if any(k in trimmed.lower() for k in keywords) and not trimmed.endswith(("&", "=", "?")) and len(trimmed) > 25:
                 return trimmed
 
@@ -471,7 +519,7 @@ class AirLinkGatewayHandler(http.server.BaseHTTPRequestHandler):
   <div class="badge">⚡ AIRLINK AUTH GATEWAY</div>
   <h1>{self.command_name} Sign-In</h1>
   <p>Step 1: Open Google authentication in your browser with your subscription account:</p>
-  <a class="btn-login" href="{self.target_url}" target="_blank">🔑 Open Google Login</a>
+  <a class="btn-login" href="{html_mod.escape(self.target_url)}" target="_blank">🔑 Open Google Login</a>
   
   <div class="divider"><span>Step 2</span></div>
   <p>When login completes, copy the code (or redirect link) and paste below:</p>
