@@ -291,7 +291,9 @@ Bridges CLI login sessions across physical devices (Termux, remote VM, other mob
 
 ```bash
 # 1. Full-service cross-device auth (hosts mobile gateway, auto-injects code, saves token)
-airlink agy                 # Local run with mobile gateway
+airlink agy                 # Local run with mobile gateway (or direct QR on mobile data)
+airlink --reauth agy        # Log in with new Google account (backs up existing session)
+airlink login agy           # Shortcut to log in with new Google account
 airlink ubu agy             # Run on remote VM 'ubu'
 airlink gh auth login       # GitHub device flow across phones
 

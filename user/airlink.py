@@ -9,6 +9,8 @@ Provides standalone modular tools and unified orchestration:
 """
 
 import argparse
+import base64
+import fcntl
 import hmac
 import http.server
 import json
@@ -19,8 +21,10 @@ import secrets
 import select
 import shlex
 import shutil
+import signal
 import socket
 import socketserver
+import struct
 import subprocess
 import sys
 import threading
@@ -82,6 +86,29 @@ def set_clipboard(text: str) -> bool:
         except Exception:
             pass
     return False
+
+
+def get_token_info(token_path: Path) -> dict:
+    """Extract email and metadata from an antigravity oauth token file."""
+    if not token_path.is_file():
+        return {}
+    try:
+        data = json.loads(token_path.read_text(encoding="utf-8"))
+        email = data.get("id_token_email") or data.get("email")
+        if not email and data.get("id_token"):
+            try:
+                parts = data["id_token"].split(".")
+                if len(parts) >= 2:
+                    payload_b64 = parts[1] + "=" * (-len(parts[1]) % 4)
+                    payload = json.loads(base64.urlsafe_b64decode(payload_b64))
+                    email = payload.get("email")
+            except Exception:
+                pass
+        if not email and isinstance(data.get("token"), dict):
+            email = data["token"].get("email")
+        return {"email": email or "unknown", "valid": True}
+    except Exception:
+        return {}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -202,22 +229,33 @@ def extract_auth_code(text: str) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def render_qr(data: str, invert: bool = True, border: int = 1) -> bool:
-    """Display ASCII QR code in the terminal."""
+    """Display ASCII QR code in the terminal with newline and column safety."""
     try:
         import qrcode
+        import io
         qr = qrcode.QRCode(border=border)
         qr.add_data(data)
-        qr.print_ascii(invert=invert)
+        cols = shutil.get_terminal_size((80, 24)).columns
+        sio = io.StringIO()
+        qr.print_ascii(out=sio, invert=invert)
+        qr_str = sio.getvalue()
+        lines = qr_str.splitlines()
+        max_w = max(len(l) for l in lines) if lines else 0
+        if cols < max_w:
+            sys.stdout.write(f"\r\n\033[1;33m⚠️ Terminal width ({cols} cols) is narrower than QR code ({max_w} cols).\033[0m\r\n\033[0;33m   Pinch/zoom out font for Phone B to scan cleanly.\033[0m\r\n\r\n")
+        for l in lines:
+            sys.stdout.write(l + "\r\n")
+        sys.stdout.flush()
         return True
     except ImportError:
         # Fallback to command-line qr if available
         if shutil.which("qr"):
             subprocess.run(["qr", data])
             return True
-        sys.stderr.write("❌ python 'qrcode' package not installed. Run: pip install qrcode\n")
+        sys.stderr.write("❌ python 'qrcode' package not installed. Run: pip install qrcode\r\n")
         return False
     except Exception as e:
-        sys.stderr.write(f"❌ Failed to render QR: {e}\n")
+        sys.stderr.write(f"❌ Failed to render QR: {e}\r\n")
         return False
 
 
@@ -225,8 +263,14 @@ def render_qr(data: str, invert: bool = True, border: int = 1) -> bool:
 # 5. Network Discovery (LAN / Hotspot / Tailscale)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def get_lan_ip() -> str:
-    """Discover local reachable IP (Wi-Fi, hotspot gateway, or primary route)."""
+EXCLUDE_IFACE_PREFIXES = ("rmnet", "vgate", "tun", "tap", "dummy", "ppp", "p2p", "sit", "ip_vti", "ip6", "lo")
+
+def get_lan_ip() -> str | None:
+    """Discover local reachable IP (Wi-Fi, hotspot gateway, or Tailscale route).
+    
+    Excludes VPN tunnels (vgate, tun, tap) and cellular data interfaces (rmnet).
+    Returns None if no reachable local interface is active.
+    """
     # 1. Hotspot & Wi-Fi interfaces (highest priority for cross-phone connectivity)
     try:
         res = subprocess.run(["ifconfig"], capture_output=True, text=True, timeout=2)
@@ -247,35 +291,39 @@ def get_lan_ip() -> str:
             if pref in ifaces and not ifaces[pref].startswith("127."):
                 return ifaces[pref]
 
-        # Standard Android hotspot IP 192.168.43.1 or private 192.168.x.x
+        # Standard Android hotspot IP 192.168.43.1 or private 192.168.x.x (on physical non-excluded interface)
         for name, ip in ifaces.items():
+            if any(name.startswith(ex) for ex in EXCLUDE_IFACE_PREFIXES):
+                continue
             if ip.startswith("192.168.43.") or ip.startswith("192.168."):
                 return ip
 
-        # Tailscale VPN
+        # Tailscale VPN (valid for cross-device tailnet connectivity)
         for name, ip in ifaces.items():
             if ip.startswith("100.") or "tailscale" in name:
                 return ip
 
-        # Non-cellular private LAN (e.g. 10.x, 172.16-31.x)
+        # Non-cellular private LAN (e.g. 10.x, 172.16-31.x on physical LAN interface)
         for name, ip in ifaces.items():
-            if not name.startswith("rmnet") and not ip.startswith("127."):
+            if any(name.startswith(ex) for ex in EXCLUDE_IFACE_PREFIXES):
+                continue
+            if ip.startswith("10.") or (ip.startswith("172.") and 16 <= int(ip.split(".")[1]) <= 31 and not ip.startswith("172.30.")):
                 return ip
     except Exception:
         pass
 
-    # 2. Outbound route socket probe (fallback)
+    # 2. Outbound route socket probe (fallback, ensuring not a VPN or cellular tunnel)
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
         ip = s.getsockname()[0]
         s.close()
-        if ip and not ip.startswith("127."):
+        if ip and not ip.startswith("127.") and not ip.startswith("172.30.") and (ip.startswith("192.168.") or ip.startswith("10.") or ip.startswith("100.")):
             return ip
     except Exception:
         pass
 
-    return "127.0.0.1"
+    return None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -493,7 +541,7 @@ class AirLinkServer:
         self.server = None
         self.thread = None
         self.port = 8888
-        self.lan_ip = get_lan_ip()
+        self.lan_ip = get_lan_ip() or "127.0.0.1"
 
     def start(self):
         callback_func = staticmethod(self.on_code_received) if self.on_code_received else None
@@ -561,19 +609,39 @@ def run_airlink(argv: list[str]) -> int:
     parser.add_argument("--clip", action="store_true", help="Silently copy captured URL to Android clipboard")
     parser.add_argument("--local", action="store_true", help="Force local execution in Termux")
     parser.add_argument("--no-save", action="store_true", help="Do not auto-save token with agy-account")
+    parser.add_argument("--reauth", "--login", "--new", dest="reauth", action="store_true", help="Force new account sign-in flow (backs up active session)")
 
-    opts = parser.parse_args(argv)
-    if not opts.args:
+    opts, remaining = parser.parse_known_args(argv)
+    raw_args = list(opts.args) + list(remaining)
+
+    if not raw_args:
         parser.print_help()
+        token_path = Path.home() / ".gemini" / "antigravity-cli" / "antigravity-oauth-token"
+        if token_path.is_file():
+            info = get_token_info(token_path)
+            if info.get("email"):
+                print(f"\n\033[1;32m● Active agy session:\033[0m \033[1m{info['email']}\033[0m")
         print("\nExamples:")
-        print("  airlink agy                 Run agy with AirLink mobile auth gateway")
+        print("  airlink agy                 Run agy CLI with AirLink")
+        print("  airlink --reauth agy        Log in with a new Google account (Phone B or local)")
         print("  airlink --qr agy            Direct terminal QR code mode")
         print("  airlink ubu agy             Run on remote node 'ubu'")
         print("  airlink gh auth login       GitHub device flow across phones")
+        print("  airlink --open <cmd>        Open captured URL directly on phone browser")
+        print("\nStandalone Tools:")
+        print("  url-heal                    Fix broken URLs in clipboard")
+        print("  qr                          Render QR code for clipboard/text")
+        print("  auth-code                   Extract OAuth code from clipboard URL")
         return 0
 
-    # Parse node vs command
-    first = opts.args[0]
+    # Support 'login' or 'reauth' subcommand
+    if raw_args[0] in ("login", "reauth"):
+        opts.reauth = True
+        raw_args = raw_args[1:]
+        if not raw_args:
+            raw_args = ["agy"]
+
+    first = raw_args[0]
     remote_hosts = []
     ssh_config = Path.home() / ".ssh" / "config"
     if ssh_config.is_file():
@@ -593,9 +661,12 @@ def run_airlink(argv: list[str]) -> int:
     if not opts.local and first in remote_hosts:
         is_remote = True
         target_node = first
-        cmd_tokens = opts.args[1:]
+        cmd_tokens = raw_args[1:]
     else:
-        cmd_tokens = opts.args
+        cmd_tokens = raw_args
+
+    if not cmd_tokens:
+        cmd_tokens = ["agy"]
 
     cmd_str = " ".join(cmd_tokens)
     cmd_name = cmd_tokens[0] if cmd_tokens else "cli"
@@ -605,14 +676,58 @@ def run_airlink(argv: list[str]) -> int:
     # Check initial token modification time for agy
     token_path = Path.home() / ".gemini" / "antigravity-cli" / "antigravity-oauth-token"
     token_mtime_before = token_path.stat().st_mtime if token_path.is_file() else 0
+    backup_token_path = None
 
-    # Prepare command execution
+    # Handle agy authentication check and --reauth / qr login flow
+    is_login_flow = opts.reauth or opts.qr or (cmd_tokens and cmd_tokens[0] in ("login", "reauth"))
+
+    if not is_remote and cmd_name in ("agy", "antigravity"):
+        if token_path.is_file():
+            info = get_token_info(token_path)
+            email = info.get("email", "unknown")
+            if is_login_flow:
+                # Ensure existing session is saved into agy-account so it's not lost
+                trigger_agy_account_save()
+                backup_token_path = token_path.parent / f".reauth_backup_{os.getpid()}"
+                try:
+                    shutil.copy2(token_path, backup_token_path)
+                    token_path.unlink()
+                    print(f"\033[1;36m🔑 AirLink: Starting fresh QR sign-in for agy...\033[0m\n\033[0;32m  ✔ Current active session ({email}) saved in agy-account.\033[0m\n\033[0;36m  ⚡ Generating Google OAuth QR code for Phone B...\033[0m\n")
+                except Exception as e:
+                    print(f"⚠️ Failed to isolate token for reauth: {e}")
+            else:
+                print(f"\033[1;33mℹ️ agy is already logged in as {email}.\033[0m\n\033[0;36m   • Resuming active session...\n   • To log in with a new account via QR: \033[1mairlink qr agy\033[0m\n")
+
+    # Prepare command execution (ensure remote PATH includes standard binary locations)
     if is_remote:
-        exec_args = ["ssh", "-tt", target_node, f"cd ~ && {cmd_str}"]
+        exec_args = ["ssh", "-tt", target_node, f"export PATH=\"$HOME/.local/bin:$HOME/bin:$PATH\"; cd ~ && {cmd_str}"]
     else:
         exec_args = cmd_tokens
 
+    is_interactive = sys.stdin.isatty() and sys.stdout.isatty()
     master_fd, slave_fd = pty.openpty()
+
+    # Forward terminal dimensions if interactive
+    if is_interactive:
+        try:
+            ws = fcntl.ioctl(sys.stdin.fileno(), termios.TIOCGWINSZ, b"\x00" * 8)
+            fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, ws)
+            fcntl.ioctl(master_fd, termios.TIOCSWINSZ, ws)
+        except Exception:
+            pass
+
+        def sigwinch_handler(signum, frame):
+            try:
+                ws = fcntl.ioctl(sys.stdin.fileno(), termios.TIOCGWINSZ, b"\x00" * 8)
+                fcntl.ioctl(master_fd, termios.TIOCSWINSZ, ws)
+            except Exception:
+                pass
+
+        try:
+            signal.signal(signal.SIGWINCH, sigwinch_handler)
+        except Exception:
+            pass
+
     proc = subprocess.Popen(
         exec_args,
         stdin=slave_fd,
@@ -621,6 +736,18 @@ def run_airlink(argv: list[str]) -> int:
         close_fds=True,
     )
     os.close(slave_fd)
+
+    # Set raw/cbreak terminal mode on parent stdin so escape keys, arrows, and characters pass through
+    old_tty = None
+    if is_interactive:
+        try:
+            old_tty = termios.tcgetattr(sys.stdin.fileno())
+            new_tty = list(old_tty)
+            tty.cfmakeraw(new_tty)
+            new_tty[1] |= termios.OPOST  # Maintain newline expansion (\n -> \r\n)
+            termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, new_tty)
+        except Exception:
+            old_tty = None
 
     buf = []
     lock = threading.Lock()
@@ -637,9 +764,9 @@ def run_airlink(argv: list[str]) -> int:
             return
         code_injected.set()
         try:
-            os.write(master_fd, (safe_code + "\n").encode("utf-8"))
-            sys.stdout.write(f"\n\033[1;32m✔ Code delivered to terminal!\033[0m\n")
-            sys.stdout.flush()
+            os.write(master_fd, (safe_code + "\r\n").encode("utf-8"))
+            sys.stdout.buffer.write(b"\r\n\033[1;32m\xe2\x9c\x94 Code delivered to terminal!\033[0m\r\n")
+            sys.stdout.buffer.flush()
         except OSError:
             pass
 
@@ -652,96 +779,118 @@ def run_airlink(argv: list[str]) -> int:
         set_clipboard(clean)
 
         if opts.clip:
-            sys.stdout.write(f"\n\033[1;32m✔ Clean URL copied to clipboard!\033[0m\n")
+            sys.stdout.write(f"\r\n\033[1;32m✔ Clean URL copied to clipboard!\033[0m\r\n")
             sys.stdout.flush()
             return
 
         if opts.open:
-            sys.stdout.write(f"\n\033[1;32m✔ Opening URL on phone browser...\033[0m\n")
+            sys.stdout.write(f"\r\n\033[1;32m✔ Opening URL on phone browser...\033[0m\r\n")
             sys.stdout.flush()
             if shutil.which("termux-open-url"):
                 subprocess.Popen(["termux-open-url", clean], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             return
 
-        if opts.qr:
-            sys.stdout.write(f"\n\033[1;32m✔ Scan QR with Phone B to Authenticate:\033[0m\n")
+        lan_ip = get_lan_ip()
+        # If explicit QR mode OR device has no reachable LAN/Hotspot IP, use direct terminal QR
+        if opts.qr or not lan_ip:
+            if not opts.qr and not lan_ip:
+                sys.stdout.write(f"\r\n\033[1;33mℹ️ No local Wi-Fi / Hotspot detected (device is on cellular data).\033[0m\r\n\033[1;36m📱 Switching to Direct Terminal QR Mode for Phone B:\033[0m\r\n")
+            else:
+                sys.stdout.write(f"\r\n\033[1;32m✔ Scan QR with Phone B to Authenticate:\033[0m\r\n")
             render_qr(clean, invert=True)
-            sys.stdout.write(f"  \033[1;36m{clean}\033[0m\n")
-            sys.stdout.write(f"\n\033[1;33m💡 When Phone B displays the code, paste it below:\033[0m\n")
+            sys.stdout.write(f"  \033[1;36m{clean}\033[0m\r\n")
+            sys.stdout.write(f"\r\n\033[1;33m👉 When Phone B displays the code, paste it below:\033[0m\r\n")
             sys.stdout.flush()
             return
 
-        # Default: Web Gateway Mode
+        # Default: Web Gateway Mode (LAN IP is reachable)
         gateway_server = AirLinkServer(clean, cmd_name, deliver_code_to_proc)
         gateway_url = gateway_server.start()
         if gateway_url:
             set_clipboard(gateway_url)
-            sys.stdout.write(f"\n\033[1;32m⚡ AirLink Gateway Active! Point Phone B camera at the QR code:\033[0m\n")
+            sys.stdout.write(f"\r\n\033[1;32m⚡ AirLink Gateway Active! Point Phone B camera at the QR code:\033[0m\r\n")
             render_qr(gateway_url, invert=True)
-            sys.stdout.write(f"  \033[1;36mPortal Link:\033[0m \033[1m{gateway_url}\033[0m\n")
-            sys.stdout.write(f"  \033[1;33m1. Scan with Phone B ➔ Tap Login ➔ Copy Code\033[0m\n")
-            sys.stdout.write(f"  \033[1;33m2. Paste code into the web page to auto-deliver\033[0m\n\n")
+            sys.stdout.write(f"  \033[1;36mPortal Link:\033[0m \033[1m{gateway_url}\033[0m\r\n")
+            sys.stdout.write(f"  \033[1;33m1. Scan with Phone B ➔ Tap Login ➔ Copy Code\033[0m\r\n")
+            sys.stdout.write(f"  \033[1;33m2. Paste code into the web page to auto-deliver\033[0m\r\n\r\n")
             sys.stdout.flush()
         else:
             # Fallback to direct QR
             render_qr(clean, invert=True)
 
-    # Output pump thread
-    def output_pump():
-        try:
-            while True:
-                r, _, _ = select.select([master_fd], [], [], 0.1)
-                if master_fd in r:
-                    data = os.read(master_fd, 1024)
-                    if not data:
-                        break
-                    sys.stdout.buffer.write(data)
-                    sys.stdout.flush()
+    try:
+        stdin_active = True
+        while True:
+            rlist = [master_fd]
+            if stdin_active:
+                rlist.append(sys.stdin.fileno())
 
-                    text = data.decode("utf-8", errors="ignore")
-                    with lock:
-                        buf.append(text)
-                    if not url_captured.is_set():
-                        cand = extract_url_from_stream(text)
-                        if cand:
-                            on_url_found(cand)
-                if proc.poll() is not None:
+            r, _, _ = select.select(rlist, [], [], 0.05)
+
+            # Process output from child process
+            if master_fd in r:
+                try:
+                    data = os.read(master_fd, 4096)
+                except OSError:
+                    data = b""
+                if not data:
                     break
-        except Exception:
-            pass
+                sys.stdout.buffer.write(data)
+                sys.stdout.buffer.flush()
 
-    out_thread = threading.Thread(target=output_pump, daemon=True)
-    out_thread.start()
+                text = data.decode("utf-8", errors="ignore")
+                with lock:
+                    buf.append(text)
+                    if len(buf) > 50:
+                        buf.pop(0)
+                if not url_captured.is_set():
+                    cand = extract_url_from_stream(text)
+                    if not cand and len(buf) >= 2:
+                        cand = extract_url_from_stream("".join(buf[-5:]))
+                    if cand:
+                        on_url_found(cand)
 
-    # Input relay thread
-    def input_relay():
-        try:
-            while proc.poll() is None:
-                r, _, _ = select.select([sys.stdin.fileno()], [], [], 0.2)
-                if sys.stdin.fileno() in r:
-                    line = sys.stdin.readline()
-                    if not line:
+            # User input from terminal
+            if stdin_active and sys.stdin.fileno() in r:
+                try:
+                    inp = os.read(sys.stdin.fileno(), 1024)
+                    if not inp:
+                        stdin_active = False
+                    else:
+                        os.write(master_fd, inp)
+                except OSError:
+                    stdin_active = False
+
+            if proc.poll() is not None:
+                # Drain remaining output before exiting
+                while True:
+                    r_drain, _, _ = select.select([master_fd], [], [], 0.05)
+                    if master_fd in r_drain:
+                        try:
+                            drain_data = os.read(master_fd, 4096)
+                            if not drain_data:
+                                break
+                            sys.stdout.buffer.write(drain_data)
+                            sys.stdout.buffer.flush()
+                            text = drain_data.decode("utf-8", errors="ignore")
+                            with lock:
+                                buf.append(text)
+                            if not url_captured.is_set():
+                                cand = extract_url_from_stream(text)
+                                if cand:
+                                    on_url_found(cand)
+                        except OSError:
+                            break
+                    else:
                         break
-                    try:
-                        os.write(master_fd, line.encode("utf-8"))
-                    except OSError:
-                        break
-        except Exception:
-            pass
-
-    in_thread = threading.Thread(target=input_relay, daemon=True)
-    in_thread.start()
-
-    # Background scanner on accumulated buffer in case URL was line-wrapped across reads
-    deadline = time.time() + 45
-    while time.time() < deadline and proc.poll() is None and not url_captured.is_set():
-        with lock:
-            all_text = "".join(buf)
-        cand = extract_url_from_stream(all_text)
-        if cand:
-            on_url_found(cand)
-            break
-        time.sleep(0.3)
+                break
+    finally:
+        # Restore terminal mode immediately upon exit
+        if old_tty is not None:
+            try:
+                termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, old_tty)
+            except Exception:
+                pass
 
     rc = proc.wait()
     try:
@@ -752,8 +901,24 @@ def run_airlink(argv: list[str]) -> int:
     if gateway_server:
         gateway_server.stop()
 
-    # Auto-save agy token if updated
-    if not opts.no_save and ("agy" in cmd_tokens or "antigravity" in cmd_tokens):
+    # Reauth / Token cleanup & auto-save
+    if not is_remote and cmd_name in ("agy", "antigravity"):
+        if token_path.is_file() and token_path.stat().st_mtime > token_mtime_before:
+            if not opts.no_save:
+                trigger_agy_account_save()
+            if backup_token_path and backup_token_path.is_file():
+                try:
+                    backup_token_path.unlink()
+                except OSError:
+                    pass
+        else:
+            if backup_token_path and backup_token_path.is_file():
+                try:
+                    shutil.move(str(backup_token_path), str(token_path))
+                    print("\n\033[0;32mℹ️ Restored previous active account session.\033[0m")
+                except Exception:
+                    pass
+    elif not opts.no_save and not is_remote and ("agy" in cmd_tokens or "antigravity" in cmd_tokens):
         if token_path.is_file() and token_path.stat().st_mtime > token_mtime_before:
             trigger_agy_account_save()
 
@@ -889,9 +1054,26 @@ def main():
     if args and args[0] in ("heal", "url-heal"):
         sys.exit(run_url_heal_cli(args[1:]))
     elif args and args[0] == "qr":
-        sys.exit(run_qr_cli(args[1:]))
+        if len(args) > 1 and not args[1].startswith("http"):
+            # 'airlink qr <command...>' -> run with --qr option
+            sys.exit(run_airlink(["--qr"] + args[1:]))
+        else:
+            sys.exit(run_qr_cli(args[1:]))
     elif args and args[0] in ("code", "auth-code"):
         sys.exit(run_auth_code_cli(args[1:]))
+    elif args and args[0] in ("logout", "signout"):
+        token_path = Path.home() / ".gemini" / "antigravity-cli" / "antigravity-oauth-token"
+        if token_path.is_file():
+            info = get_token_info(token_path)
+            trigger_agy_account_save()
+            token_path.unlink()
+            print(f"\n\033[1;32m✅ Logged out from agy ({info.get('email', 'account')}).\033[0m")
+            print("💡 Active token safely preserved in agy-account profiles.")
+            print("   • Run 'agy-account switch <alias>' to restore a saved session.")
+            print("   • Run 'airlink qr agy' to log in with a new Google account.\n")
+        else:
+            print("ℹ️ No active agy session found.")
+        sys.exit(0)
     else:
         sys.exit(run_airlink(args))
 
