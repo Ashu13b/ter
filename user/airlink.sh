@@ -53,7 +53,7 @@ if [ -n "${BASH_VERSION:-}" ]; then
             nodes=$(grep -E '^Host ' "$HOME/.ssh/config" | grep -v '\*' | awk '{$1=""; print $0}')
         fi
         local common_cmds="agy gh claude tailscale jupyter gcloud code login reauth"
-        local flags="--qr --open --clip --local --no-save --reauth --login -h --help"
+        local flags="--qr --open --clip --local --no-save --no-launch --reauth --login -h --help"
         if [ "$COMP_CWORD" -eq 1 ]; then
             COMPREPLY=($(compgen -W "$nodes $common_cmds $flags" -- "$cur"))
         elif [ "$COMP_CWORD" -eq 2 ]; then

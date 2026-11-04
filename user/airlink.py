@@ -28,8 +28,10 @@ import socketserver
 import struct
 import subprocess
 import sys
+import termios
 import threading
 import time
+import tty
 import urllib.parse
 from pathlib import Path
 
@@ -217,21 +219,22 @@ def extract_auth_code(text: str) -> str:
     clean = text.strip()
 
     # 1. Search for code= parameter in callback URL
-    m = re.search(r"[?&]code=([^&\s]+)", clean)
+    m = re.search(r"[?&]code=([^&\s\"'>]+)", clean)
     if m:
-        val = urllib.parse.unquote(m.group(1)).strip()
+        val = urllib.parse.unquote(m.group(1)).strip().strip("'\"<>")
         if re.match(r"^[A-Za-z0-9_\-./+=]{10,512}$", val):
             return val
 
     # 2. Search for Google OAuth code pattern: 4/0A... or 4/...
     m = re.search(r"4/[A-Za-z0-9_\-]{10,512}", clean)
     if m:
-        return m.group(0).strip()
+        return m.group(0).strip().strip("'\"<>")
 
     # 3. Raw authorization token (must not contain internal whitespace or control characters)
-    if not re.search(r"\s", clean):
-        if len(clean) >= 10 and re.match(r"^[A-Za-z0-9_\-./+=]{10,512}$", clean):
-            return clean
+    raw = clean.strip("'\"<>")
+    if not re.search(r"\s", raw):
+        if len(raw) >= 10 and re.match(r"^[A-Za-z0-9_\-./+=]{10,512}$", raw):
+            return raw
 
     return ""
 
@@ -609,6 +612,307 @@ def trigger_agy_account_save():
             pass
 
 
+def run_agy_qr_login(opts, cmd_tokens: list[str], launch_after: bool = True) -> int:
+    """Headless QR OAuth worker for agy login.
+
+    Prevents browser hijack on Phone A, prevents Bubbletea alternate screen buffer
+    from wiping QR codes, captures full multi-line OAuth URL, renders ASCII QR code
+    and Web Gateway, prompts cleanly for authorization code, injects it into agy,
+    saves the account to agy-account, and launches the interactive session.
+    """
+    token_path = Path.home() / ".gemini" / "antigravity-cli" / "antigravity-oauth-token"
+    token_dir = token_path.parent
+    token_dir.mkdir(parents=True, exist_ok=True)
+
+    # Auto-recover any stale reauth backup if token is missing
+    if not token_path.is_file():
+        stale_backups = sorted(token_dir.glob(".reauth_backup_*"), key=lambda p: p.stat().st_mtime)
+        if stale_backups:
+            try:
+                shutil.move(str(stale_backups[-1]), str(token_path))
+            except Exception:
+                pass
+
+    token_mtime_before = token_path.stat().st_mtime if token_path.is_file() else 0
+    backup_token_path = None
+    existing_email = None
+
+    if token_path.is_file():
+        info = get_token_info(token_path)
+        existing_email = info.get("email", "active account")
+        # Ensure existing session is saved into agy-account before moving
+        trigger_agy_account_save()
+        backup_token_path = token_dir / f".reauth_backup_{os.getpid()}"
+        try:
+            shutil.copy2(token_path, backup_token_path)
+            token_path.unlink()
+            print(f"\033[1;36m🔑 AirLink: Starting fresh QR sign-in for agy...\033[0m")
+            print(f"\033[0;32m  ✔ Current active session ({existing_email}) saved in agy-account.\033[0m")
+        except Exception as e:
+            print(f"⚠️ Warning: Could not create session backup: {e}")
+
+    def restore_backup():
+        nonlocal backup_token_path
+        if backup_token_path and backup_token_path.is_file():
+            if not token_path.is_file() or token_path.stat().st_mtime <= token_mtime_before:
+                try:
+                    shutil.move(str(backup_token_path), str(token_path))
+                    print("\n\033[0;32mℹ️ Restored previous active account session.\033[0m")
+                except Exception:
+                    pass
+            else:
+                try:
+                    backup_token_path.unlink()
+                except OSError:
+                    pass
+        backup_token_path = None
+
+    atexit.register(restore_backup)
+
+    print("\033[0;36m  ⚡ Initializing OAuth broker and generating QR code...\033[0m\n")
+
+    master_fd, slave_fd = pty.openpty()
+    env = os.environ.copy()
+    if not opts.open:
+        env["BROWSER"] = "true"  # Suppress Termux Chrome launch on Phone A!
+
+    try:
+        proc = subprocess.Popen(
+            ["agy"],
+            stdin=slave_fd,
+            stdout=slave_fd,
+            stderr=slave_fd,
+            env=env,
+            close_fds=True,
+        )
+    except Exception as e:
+        print(f"\033[1;31m❌ Failed to spawn agy: {e}\033[0m")
+        restore_backup()
+        return 1
+    os.close(slave_fd)
+
+    buf = []
+    selected_option = False
+    oauth_url = None
+    start_time = time.time()
+
+    # Phase 1: Capture Google OAuth URL headlessly
+    while time.time() - start_time < 12:
+        r, _, _ = select.select([master_fd], [], [], 0.05)
+        if master_fd in r:
+            try:
+                chunk = os.read(master_fd, 4096)
+            except OSError:
+                chunk = b""
+            if not chunk:
+                break
+            text = chunk.decode("utf-8", errors="ignore")
+            buf.append(text)
+            if len(buf) > 60:
+                buf.pop(0)
+
+            # Auto-select Option 1 (Google OAuth) when menu appears
+            if not selected_option and "Select login method" in text:
+                selected_option = True
+                try:
+                    os.write(master_fd, b"\r")
+                except OSError:
+                    pass
+
+            full_buf = "".join(buf)
+            cand = extract_url_from_stream(full_buf)
+            if cand:
+                oauth_url = heal_url(cand)
+                break
+
+        if proc.poll() is not None:
+            break
+
+    if not oauth_url:
+        print("\033[1;31m❌ Failed to obtain Google OAuth URL from agy.\033[0m")
+        try:
+            proc.terminate()
+            os.close(master_fd)
+        except Exception:
+            pass
+        restore_backup()
+        return 1
+
+    # Phase 2: Display QR Code & Instructions
+    set_clipboard(oauth_url)
+    print("\033[1;32m✔ OAuth link generated and copied to clipboard!\033[0m\n")
+
+    if opts.clip:
+        print("\033[1;32m✔ URL copied to Android clipboard. Exiting (--clip specified).\033[0m")
+        try:
+            proc.terminate()
+            os.close(master_fd)
+        except Exception:
+            pass
+        restore_backup()
+        return 0
+
+    if opts.open:
+        print("\033[1;32m✔ Opening URL on local phone browser...\033[0m\n")
+        if shutil.which("termux-open-url"):
+            subprocess.Popen(["termux-open-url", oauth_url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    code_injected = threading.Event()
+    received_code = [None]
+    gateway_server = None
+
+    def on_gateway_code(code: str):
+        clean = extract_auth_code(code)
+        if clean and not code_injected.is_set():
+            received_code[0] = clean
+            code_injected.set()
+
+    lan_ip = get_lan_ip()
+    use_gateway = (not opts.qr) and bool(lan_ip)
+
+    if use_gateway:
+        gateway_server = AirLinkServer(oauth_url, "agy", on_gateway_code)
+        gateway_url = gateway_server.start()
+        if gateway_url:
+            set_clipboard(gateway_url)
+            print("\033[1;32m⚡ AirLink Gateway Active! Point Phone B camera at the QR code:\033[0m\n")
+            render_qr(gateway_url, invert=True)
+            print(f"\n  \033[1;36mPortal Link:\033[0m \033[1m{gateway_url}\033[0m")
+            print("  \033[1;33m1. Scan with Phone B ➔ Tap Login ➔ Copy Code\033[0m")
+            print("  \033[1;33m2. Paste code into web page (or paste directly in terminal below)\033[0m\n")
+        else:
+            use_gateway = False
+
+    if not use_gateway:
+        if not opts.qr and not lan_ip:
+            print("\033[1;33mℹ️ No Wi-Fi / Hotspot LAN detected (device is on cellular data).\033[0m")
+            print("\033[1;36m📱 Direct Terminal QR Mode for Phone B:\033[0m\n")
+        else:
+            print("\033[1;32m📱 Scan QR Code with Phone B to Authenticate:\033[0m\n")
+        render_qr(oauth_url, invert=True)
+        print(f"\n  \033[1;36mOAuth Link:\033[0m \033[1m{oauth_url}\033[0m\n")
+        print("  \033[1;33m👉 On Phone B: Open link, sign in with Google, and copy authorization code.\033[0m\n")
+
+    # Phase 3: Wait for user input or gateway code
+    print("\033[1;33m👉 Paste authorization code from Phone B: \033[0m", end="", flush=True)
+
+    try:
+        while not code_injected.is_set():
+            r, _, _ = select.select([sys.stdin.fileno()], [], [], 0.2)
+            if sys.stdin.fileno() in r:
+                line = sys.stdin.readline()
+                if not line:
+                    break
+                code_cand = extract_auth_code(line)
+                if not code_cand and not line.strip():
+                    clip_text = get_clipboard()
+                    clip_cand = extract_auth_code(clip_text)
+                    if clip_cand:
+                        print(f"\r\n\033[1;32m✔ Detected code in Android clipboard!\033[0m")
+                        code_cand = clip_cand
+                if code_cand:
+                    received_code[0] = code_cand
+                    code_injected.set()
+                    break
+                else:
+                    print("\033[1;31mInvalid code format. Please paste the Google authorization code:\033[0m ", end="", flush=True)
+
+            if proc.poll() is not None:
+                break
+    except KeyboardInterrupt:
+        print("\n\n\033[1;33m⚠️ Login cancelled by user.\033[0m")
+        if gateway_server:
+            gateway_server.stop()
+        try:
+            proc.terminate()
+            os.close(master_fd)
+        except Exception:
+            pass
+        restore_backup()
+        return 130
+
+    if gateway_server:
+        gateway_server.stop()
+
+    if not code_injected.is_set() or not received_code[0]:
+        print("\n\033[1;31m❌ No authorization code received. Login cancelled.\033[0m")
+        try:
+            proc.terminate()
+            os.close(master_fd)
+        except Exception:
+            pass
+        restore_backup()
+        return 1
+
+    # Phase 4: Inject code into agy and wait for token exchange
+    final_code = received_code[0]
+    print(f"\r\n\033[1;36m⏳ Delivering code and exchanging tokens with Google...\033[0m")
+    try:
+        os.write(master_fd, (final_code + "\r\n").encode("utf-8"))
+    except OSError:
+        pass
+
+    success = False
+    token_wait_start = time.time()
+    while time.time() - token_wait_start < 15:
+        r, _, _ = select.select([master_fd], [], [], 0.1)
+        if master_fd in r:
+            try:
+                _ = os.read(master_fd, 4096)
+            except OSError:
+                pass
+        if token_path.is_file() and token_path.stat().st_mtime > token_mtime_before:
+            success = True
+            break
+        if proc.poll() is not None and not token_path.is_file():
+            break
+
+    try:
+        proc.terminate()
+        proc.wait(timeout=1)
+    except Exception:
+        pass
+    try:
+        os.close(master_fd)
+    except OSError:
+        pass
+
+    if not success or not token_path.is_file():
+        print("\n\033[1;31m❌ Token exchange failed. Google rejected the authorization code or request timed out.\033[0m")
+        restore_backup()
+        return 1
+
+    # Auth succeeded: remove backup so restore_backup won't revert it
+    if backup_token_path and backup_token_path.is_file():
+        try:
+            backup_token_path.unlink()
+        except OSError:
+            pass
+    backup_token_path = None
+
+    new_info = get_token_info(token_path)
+    new_email = new_info.get("email", "unknown")
+
+    print("\n\033[1;32m══════════════════════════════════════════════════════════════\033[0m")
+    print(f"\033[1;32m  🎉 Successfully authenticated as: \033[1;37m{new_email}\033[0m")
+    print("\033[1;32m══════════════════════════════════════════════════════════════\033[0m")
+
+    if not opts.no_save:
+        trigger_agy_account_save()
+
+    if not launch_after:
+        print("💡 Session ready! Run '\033[1magy\033[0m' to start coding with your new account.\n")
+        return 0
+
+    print("\033[1;36m🚀 Launching Antigravity CLI session...\033[0m\n")
+    time.sleep(0.5)
+    try:
+        os.execvp("agy", cmd_tokens)
+    except Exception as e:
+        print(f"💡 You can now run '\033[1m{' '.join(cmd_tokens)}\033[0m' (error starting process: {e})\n")
+    return 0
+
+
 def run_airlink(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(
         prog="airlink",
@@ -621,6 +925,7 @@ def run_airlink(argv: list[str]) -> int:
     parser.add_argument("--clip", action="store_true", help="Silently copy captured URL to Android clipboard")
     parser.add_argument("--local", action="store_true", help="Force local execution in Termux")
     parser.add_argument("--no-save", action="store_true", help="Do not auto-save token with agy-account")
+    parser.add_argument("--no-launch", action="store_true", help="Do not auto-launch agy CLI after login")
     parser.add_argument("--reauth", "--login", "--new", dest="reauth", action="store_true", help="Force new account sign-in flow (backs up active session)")
 
     opts, remaining = parser.parse_known_args(argv)
@@ -635,8 +940,8 @@ def run_airlink(argv: list[str]) -> int:
                 print(f"\n\033[1;32m● Active agy session:\033[0m \033[1m{info['email']}\033[0m")
         print("\nExamples:")
         print("  airlink agy                 Run agy CLI with AirLink")
-        print("  airlink --reauth agy        Log in with a new Google account (Phone B or local)")
-        print("  airlink --qr agy            Direct terminal QR code mode")
+        print("  airlink qr agy              Direct QR code sign-in for Phone B")
+        print("  airlink login agy           Sign in with a new Google account")
         print("  airlink ubu agy             Run on remote node 'ubu'")
         print("  airlink gh auth login       GitHub device flow across phones")
         print("  airlink --open <cmd>        Open captured URL directly on phone browser")
@@ -646,12 +951,23 @@ def run_airlink(argv: list[str]) -> int:
         print("  auth-code                   Extract OAuth code from clipboard URL")
         return 0
 
-    # Support 'login' or 'reauth' subcommand
+    # Support 'login', 'reauth', or 'qr' subcommand
+    launch_after = True
     if raw_args[0] in ("login", "reauth"):
         opts.reauth = True
         raw_args = raw_args[1:]
+        launch_after = bool(raw_args)
         if not raw_args:
             raw_args = ["agy"]
+    elif raw_args[0] == "qr":
+        opts.qr = True
+        raw_args = raw_args[1:]
+        launch_after = bool(raw_args)
+        if not raw_args:
+            raw_args = ["agy"]
+
+    if opts.no_launch:
+        launch_after = False
 
     first = raw_args[0]
     remote_hosts = []
@@ -687,56 +1003,18 @@ def run_airlink(argv: list[str]) -> int:
 
     # Check initial token modification time for agy
     token_path = Path.home() / ".gemini" / "antigravity-cli" / "antigravity-oauth-token"
-    # Auto-recover any stale reauth backup if token is missing
-    if not token_path.is_file():
-        stale_backups = sorted(token_path.parent.glob(".reauth_backup_*"), key=lambda p: p.stat().st_mtime)
-        if stale_backups:
-            try:
-                shutil.move(str(stale_backups[-1]), str(token_path))
-            except Exception:
-                pass
-
     token_mtime_before = token_path.stat().st_mtime if token_path.is_file() else 0
-    backup_token_path = None
-
-    def restore_backup_if_needed():
-        nonlocal backup_token_path
-        if backup_token_path and backup_token_path.is_file():
-            if not token_path.is_file() or token_path.stat().st_mtime <= token_mtime_before:
-                try:
-                    shutil.move(str(backup_token_path), str(token_path))
-                    sys.stdout.write("\r\n\033[0;32mℹ️ Restored previous active account session.\033[0m\r\n")
-                    sys.stdout.flush()
-                except Exception:
-                    pass
-            else:
-                try:
-                    backup_token_path.unlink()
-                except OSError:
-                    pass
-        backup_token_path = None
-
-    atexit.register(restore_backup_if_needed)
 
     # Handle agy authentication check and --reauth / qr login flow
     is_login_flow = opts.reauth or opts.qr or (cmd_tokens and cmd_tokens[0] in ("login", "reauth"))
 
     if not is_remote and cmd_name in ("agy", "antigravity"):
-        if token_path.is_file():
+        if is_login_flow or not token_path.is_file():
+            return run_agy_qr_login(opts, cmd_tokens, launch_after=launch_after)
+        else:
             info = get_token_info(token_path)
             email = info.get("email", "unknown")
-            if is_login_flow:
-                # Ensure existing session is saved into agy-account so it's not lost
-                trigger_agy_account_save()
-                backup_token_path = token_path.parent / f".reauth_backup_{os.getpid()}"
-                try:
-                    shutil.copy2(token_path, backup_token_path)
-                    token_path.unlink()
-                    print(f"\033[1;36m🔑 AirLink: Starting fresh QR sign-in for agy...\033[0m\n\033[0;32m  ✔ Current active session ({email}) saved in agy-account.\033[0m\n\033[0;36m  ⚡ Generating Google OAuth QR code for Phone B...\033[0m\n")
-                except Exception as e:
-                    print(f"⚠️ Failed to isolate token for reauth: {e}")
-            else:
-                print(f"\033[1;33mℹ️ agy is already logged in as {email}.\033[0m\n\033[0;36m   • Resuming active session...\n   • To log in with a new account via QR: \033[1mairlink qr agy\033[0m\n")
+            print(f"\033[1;33mℹ️ agy is already logged in as {email}.\033[0m\n\033[0;36m   • Resuming active session...\n   • To log in with a new account via QR: \033[1mairlink qr agy\033[0m\n")
 
     # Prepare command execution (ensure remote PATH includes standard binary locations)
     if is_remote:
@@ -939,7 +1217,6 @@ def run_airlink(argv: list[str]) -> int:
                 termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, old_tty)
             except Exception:
                 pass
-        restore_backup_if_needed()
 
     rc = proc.wait()
     try:

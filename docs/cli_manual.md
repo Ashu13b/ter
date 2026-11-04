@@ -292,12 +292,15 @@ Bridges CLI login sessions across physical devices (Termux, remote VM, other mob
 ```bash
 # 1. Full-service cross-device auth (hosts mobile gateway, auto-injects code, saves token)
 airlink agy                 # Local run with mobile gateway (or direct QR on mobile data)
+airlink qr agy              # Headless QR auth for Phone B (no browser hijack, auto-launches agy)
 airlink --reauth agy        # Log in with new Google account (backs up existing session)
 airlink login agy           # Shortcut to log in with new Google account
+airlink --no-launch qr agy  # Authenticate via QR without automatically launching agy session
 airlink ubu agy             # Run on remote VM 'ubu'
 airlink gh auth login       # GitHub device flow across phones
 
 # 2. Direct QR code mode (renders OAuth link QR directly in terminal, skips gateway)
+airlink qr agy
 airlink --qr agy
 
 # 3. Open in local phone browser
