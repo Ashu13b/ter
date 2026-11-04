@@ -134,9 +134,14 @@ def trim_url_artifacts(url: str) -> str:
 
 
 def validate_oauth_url(url: str) -> str:
-    """Ensure OAuth URL has valid structure and deduplicate any repeated query parameters."""
+    """Ensure OAuth URL has valid structure, truncate accidental concatenations,
+    and deduplicate any repeated query parameters.
+    """
     if not url or "?" not in url:
         return url
+    m_dup = re.search(r"https?://", url[8:])
+    if m_dup:
+        url = url[:8 + m_dup.start()]
     parsed = urllib.parse.urlparse(url)
     if "accounts.google.com" not in parsed.netloc:
         return url
@@ -146,7 +151,8 @@ def validate_oauth_url(url: str) -> str:
         if k not in seen_keys:
             seen_keys.add(k)
             unique_params.append((k, v))
-    new_query = urllib.parse.urlencode(unique_params, safe="/+:@")
+    # Keep safe='+' so scopes keep +, but redirect_uri stays %-encoded (not decoded to https://)
+    new_query = urllib.parse.urlencode(unique_params, safe="+")
     return urllib.parse.urlunparse((
         parsed.scheme,
         parsed.netloc,
@@ -155,6 +161,16 @@ def validate_oauth_url(url: str) -> str:
         new_query,
         parsed.fragment,
     ))
+
+
+def is_complete_url(url: str) -> bool:
+    """Verify that URL is complete and not a partial stream chunk."""
+    if not url:
+        return False
+    if "accounts.google.com" in url:
+        # Full Google OAuth URL must contain client_id, redirect_uri, and state token
+        return bool("client_id=" in url and "redirect_uri=" in url and "state=" in url and len(url) > 150)
+    return len(url) > 25
 
 
 def heal_url(raw: str) -> str:
@@ -232,11 +248,7 @@ def extract_url_from_stream(text: str) -> str | None:
                     break
 
             full_url = validate_oauth_url(trim_url_artifacts(full_url))
-            if "accounts.google.com" in full_url:
-                # Full Google OAuth URL must contain state=
-                if "state=" in full_url and len(full_url) > 150:
-                    return full_url
-            elif len(full_url) > 25:
+            if is_complete_url(full_url):
                 return full_url
 
     # 2. Check standard full URLs in text
@@ -245,12 +257,12 @@ def extract_url_from_stream(text: str) -> str | None:
         keywords = ["oauth", "login", "auth", "token", "code", "device", "state=", "signin"]
         for m in reversed(matches):
             trimmed = validate_oauth_url(trim_url_artifacts(m))
-            if any(k in trimmed.lower() for k in keywords) and not trimmed.endswith(("&", "=", "?")) and len(trimmed) > 25:
+            if any(k in trimmed.lower() for k in keywords) and not trimmed.endswith(("&", "=", "?")) and is_complete_url(trimmed):
                 return trimmed
 
     # 3. Fallback: compact whitespace strip
     healed = heal_url(clean_text)
-    if healed and len(healed) > 25:
+    if is_complete_url(healed):
         return healed
 
     return None
