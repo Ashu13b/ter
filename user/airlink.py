@@ -9,6 +9,7 @@ Provides standalone modular tools and unified orchestration:
 """
 
 import argparse
+import atexit
 import base64
 import fcntl
 import hmac
@@ -149,46 +150,57 @@ def heal_url(raw: str) -> str:
 
 
 def extract_url_from_stream(text: str) -> str | None:
-    """Detect and extract full URLs from live terminal output streams."""
+    """Detect and extract full URLs from live terminal output streams,
+    handling TUI line-wraps and terminal formatting.
+    """
     if not text:
         return None
 
-    # First look for standard full URLs
-    matches = re.findall(r"https?://[A-Za-z0-9_\-./~:#@!$&*+,;=%?]+", text)
+    # Strip ANSI escape sequences for clean parsing
+    ansi_escape = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+    clean_text = ansi_escape.sub("", text)
+
+    # 1. Line-by-line URL assembly (handles wrapped terminal chunks like agy's 10-line OAuth prompt)
+    lines = [l.strip() for l in clean_text.splitlines() if l.strip()]
+    for i, line in enumerate(lines):
+        m = re.search(r"https?://\S+", line)
+        if m:
+            full_url = m.group(0)
+            for next_line in lines[i + 1:]:
+                if not next_line:
+                    break
+                # If line contains user-facing instructions, navigation hints, or box borders, stop
+                if any(w in next_line.lower() for w in ["lines)", "navigate", "select", "enter", "shift+", "browser", "code:", "press any key", "signing in"]):
+                    break
+                # If line has internal whitespace, it's not a single URL token
+                if " " in next_line:
+                    break
+                # If it contains valid URL characters
+                if re.match(r"^[A-Za-z0-9_\-./~:#@!$&*+,;=%?]+$", next_line):
+                    full_url += next_line
+                else:
+                    break
+
+            full_url = trim_url_artifacts(full_url)
+            if "accounts.google.com" in full_url:
+                # Full Google OAuth URL must contain state=
+                if "state=" in full_url and len(full_url) > 150:
+                    return full_url
+            elif len(full_url) > 25:
+                return full_url
+
+    # 2. Check standard full URLs in text
+    matches = re.findall(r"https?://[A-Za-z0-9_\-./~:#@!$&*+,;=%?]+", clean_text)
     if matches:
         keywords = ["oauth", "login", "auth", "token", "code", "device", "state=", "signin"]
         for m in reversed(matches):
             trimmed = trim_url_artifacts(m)
-            if not trimmed.endswith(("&", "=", "?")):
-                if any(k in trimmed.lower() for k in keywords):
-                    return trimmed
-        trimmed_last = trim_url_artifacts(matches[-1])
-        if not trimmed_last.endswith(("&", "=", "?")):
-            return trimmed_last
+            if any(k in trimmed.lower() for k in keywords) and not trimmed.endswith(("&", "=", "?")) and len(trimmed) > 25:
+                return trimmed
 
-    # Check soft-wrapped terminal chunks
-    lines = [l.strip() for l in text.splitlines() if l.strip()]
-    reconstructed = []
-    in_url = False
-    for line in lines:
-        if line.startswith(("http://", "https://")):
-            reconstructed.append(line)
-            in_url = True
-        elif in_url:
-            if " " not in line and any(c in line for c in ["=", "&", "/", "%", "?"]):
-                reconstructed[-1] += line
-            elif line.startswith(("state=", "client_id=", "redirect_uri=", "code=", "access_type=")):
-                reconstructed[-1] += line
-            else:
-                in_url = False
-    for r in reconstructed:
-        cand = trim_url_artifacts(r)
-        if cand:
-            return cand
-
-    # Fallback: compact whitespace strip
-    healed = heal_url(text)
-    if healed:
+    # 3. Fallback: compact whitespace strip
+    healed = heal_url(clean_text)
+    if healed and len(healed) > 25:
         return healed
 
     return None
@@ -675,8 +687,36 @@ def run_airlink(argv: list[str]) -> int:
 
     # Check initial token modification time for agy
     token_path = Path.home() / ".gemini" / "antigravity-cli" / "antigravity-oauth-token"
+    # Auto-recover any stale reauth backup if token is missing
+    if not token_path.is_file():
+        stale_backups = sorted(token_path.parent.glob(".reauth_backup_*"), key=lambda p: p.stat().st_mtime)
+        if stale_backups:
+            try:
+                shutil.move(str(stale_backups[-1]), str(token_path))
+            except Exception:
+                pass
+
     token_mtime_before = token_path.stat().st_mtime if token_path.is_file() else 0
     backup_token_path = None
+
+    def restore_backup_if_needed():
+        nonlocal backup_token_path
+        if backup_token_path and backup_token_path.is_file():
+            if not token_path.is_file() or token_path.stat().st_mtime <= token_mtime_before:
+                try:
+                    shutil.move(str(backup_token_path), str(token_path))
+                    sys.stdout.write("\r\n\033[0;32mℹ️ Restored previous active account session.\033[0m\r\n")
+                    sys.stdout.flush()
+                except Exception:
+                    pass
+            else:
+                try:
+                    backup_token_path.unlink()
+                except OSError:
+                    pass
+        backup_token_path = None
+
+    atexit.register(restore_backup_if_needed)
 
     # Handle agy authentication check and --reauth / qr login flow
     is_login_flow = opts.reauth or opts.qr or (cmd_tokens and cmd_tokens[0] in ("login", "reauth"))
@@ -820,6 +860,7 @@ def run_airlink(argv: list[str]) -> int:
 
     try:
         stdin_active = True
+        login_method_selected = False
         while True:
             rlist = [master_fd]
             if stdin_active:
@@ -843,10 +884,17 @@ def run_airlink(argv: list[str]) -> int:
                     buf.append(text)
                     if len(buf) > 50:
                         buf.pop(0)
+
+                # Auto-select Option 1 if agy login method menu appears
+                if not login_method_selected and "Select login method" in text:
+                    login_method_selected = True
+                    try:
+                        os.write(master_fd, b"\r")
+                    except OSError:
+                        pass
+
                 if not url_captured.is_set():
-                    cand = extract_url_from_stream(text)
-                    if not cand and len(buf) >= 2:
-                        cand = extract_url_from_stream("".join(buf[-5:]))
+                    cand = extract_url_from_stream("".join(buf))
                     if cand:
                         on_url_found(cand)
 
@@ -876,7 +924,7 @@ def run_airlink(argv: list[str]) -> int:
                             with lock:
                                 buf.append(text)
                             if not url_captured.is_set():
-                                cand = extract_url_from_stream(text)
+                                cand = extract_url_from_stream("".join(buf))
                                 if cand:
                                     on_url_found(cand)
                         except OSError:
@@ -891,6 +939,7 @@ def run_airlink(argv: list[str]) -> int:
                 termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, old_tty)
             except Exception:
                 pass
+        restore_backup_if_needed()
 
     rc = proc.wait()
     try:
@@ -901,24 +950,8 @@ def run_airlink(argv: list[str]) -> int:
     if gateway_server:
         gateway_server.stop()
 
-    # Reauth / Token cleanup & auto-save
-    if not is_remote and cmd_name in ("agy", "antigravity"):
-        if token_path.is_file() and token_path.stat().st_mtime > token_mtime_before:
-            if not opts.no_save:
-                trigger_agy_account_save()
-            if backup_token_path and backup_token_path.is_file():
-                try:
-                    backup_token_path.unlink()
-                except OSError:
-                    pass
-        else:
-            if backup_token_path and backup_token_path.is_file():
-                try:
-                    shutil.move(str(backup_token_path), str(token_path))
-                    print("\n\033[0;32mℹ️ Restored previous active account session.\033[0m")
-                except Exception:
-                    pass
-    elif not opts.no_save and not is_remote and ("agy" in cmd_tokens or "antigravity" in cmd_tokens):
+    # Auto-save token if updated
+    if not opts.no_save and not is_remote and ("agy" in cmd_tokens or "antigravity" in cmd_tokens):
         if token_path.is_file() and token_path.stat().st_mtime > token_mtime_before:
             trigger_agy_account_save()
 
