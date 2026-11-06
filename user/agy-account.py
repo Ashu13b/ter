@@ -257,7 +257,7 @@ def sync_accounts(target=None, port=None):
         scp_base.extend(["-P", str(port)])
 
     # Check connection and create remote directories safely without shell=True
-    cmd_mkdir = ssh_base + [host, "mkdir -p ~/.gemini/antigravity-cli/accounts ~/.local/bin"]
+    cmd_mkdir = ssh_base + [host, "mkdir -p ~/.gemini/antigravity-cli/accounts ~/.local/bin && chmod 700 ~/.gemini/antigravity-cli/accounts ~/.gemini/antigravity-cli/accounts/* 2>/dev/null || true"]
     res = subprocess.run(cmd_mkdir)
     if res.returncode != 0:
         print(f"❌ Could not reach {host} via SSH.")
@@ -274,14 +274,31 @@ def sync_accounts(target=None, port=None):
     cmd_scp_script = scp_base + [str(script_path), f"{host}:~/.local/bin/agy-account"]
     subprocess.run(cmd_scp_script)
 
+    # Also sync airlink suite if present
+    airlink_path = Path.home() / ".local" / "bin" / "airlink"
+    if not airlink_path.is_file():
+        airlink_path = script_path.parent / "airlink.py"
+    if airlink_path.is_file():
+        cmd_scp_airlink = scp_base + [str(airlink_path), f"{host}:~/.local/bin/airlink"]
+        subprocess.run(cmd_scp_airlink)
+
     remote_setup = (
-        "chmod +x ~/.local/bin/agy-account && "
+        "chmod +x ~/.local/bin/agy-account 2>/dev/null || true; "
+        "if [ -f ~/.local/bin/airlink ]; then "
+        "  chmod +x ~/.local/bin/airlink; "
+        "  ln -sf ~/.local/bin/airlink ~/.local/bin/url-heal; "
+        "  ln -sf ~/.local/bin/airlink ~/.local/bin/qr; "
+        "  ln -sf ~/.local/bin/airlink ~/.local/bin/auth-code; "
+        "fi; "
         "chmod 600 ~/.gemini/antigravity-cli/antigravity-oauth-token 2>/dev/null || true; "
-        "chmod -R 600 ~/.gemini/antigravity-cli/accounts/* 2>/dev/null || true; "
+        "find ~/.gemini/antigravity-cli/accounts -type d -exec chmod 700 {} + 2>/dev/null || true; "
+        "find ~/.gemini/antigravity-cli/accounts -type f -exec chmod 600 {} + 2>/dev/null || true; "
         "if command -v termux-fix-shebang >/dev/null 2>&1; then "
-        "termux-fix-shebang ~/.local/bin/agy-account; "
+        "  termux-fix-shebang ~/.local/bin/agy-account 2>/dev/null || true; "
+        "  termux-fix-shebang ~/.local/bin/airlink 2>/dev/null || true; "
         "else "
-        "sed -i '1s|^#!.*python.*|#!/usr/bin/env python3|' ~/.local/bin/agy-account 2>/dev/null || true; "
+        "  sed -i '1s|^#!.*python.*|#!/usr/bin/env python3|' ~/.local/bin/agy-account 2>/dev/null || true; "
+        "  sed -i '1s|^#!.*python.*|#!/usr/bin/env python3|' ~/.local/bin/airlink 2>/dev/null || true; "
         "fi"
     )
     cmd_setup = ssh_base + [host, remote_setup]
@@ -319,10 +336,12 @@ def cmd_list():
     elif "error" in active:
         print(f"  Error reading active token: {active['error']}")
     else:
-        print(f"  Email:        {active['email']}")
+        print(f"  Email:        \033[1m{active['email']}\033[0m")
         print(f"  Auth Method:  {active['auth_method']}")
-        print(f"  Expiry:       {active['expiry']}")
-        print(f"  Refreshable:  {'Yes' if active['has_refresh'] else 'No'}")
+        if active.get("has_refresh"):
+            print(f"  Status:       \033[1;32m● Active · Auto-refreshable\033[0m (access token auto-renews)")
+        else:
+            print(f"  Status:       \033[1;33m● Active (Expires {active['expiry'][:19]})\033[0m")
 
     accounts = list_saved_accounts()
     print(f"\n=== Saved Accounts ({len(accounts)}) ===")
@@ -330,10 +349,15 @@ def cmd_list():
         print("  No saved accounts yet. Run 'agy-account save [alias]' to save current session.")
     else:
         for name, info in accounts:
-            marker = "👉 [ACTIVE]" if info and info.get("email") == active_email else "   "
+            is_active = bool(info and info.get("email") == active_email)
+            marker = "\033[1;32m👉 [ACTIVE]\033[0m" if is_active else "           "
             email = info.get("email", "unknown") if info else "unknown"
-            expiry = info.get("expiry", "unknown") if info else "unknown"
-            print(f" {marker} {name:<16} {email:<32} (expires: {expiry[:19]})")
+            if info and info.get("has_refresh"):
+                status_badge = "\033[0;32m[Auto-Refreshable]\033[0m"
+            else:
+                expiry = info.get("expiry", "unknown") if info else "unknown"
+                status_badge = f"\033[0;33m(expires: {expiry[:19]})\033[0m"
+            print(f" {marker} \033[1m{name:<6}\033[0m {email:<30} {status_badge}")
     print()
 
 
