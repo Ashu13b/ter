@@ -30,6 +30,7 @@ wget
 termux-am-socket    # required by termux-* commands
 tinyproxy           # local proxy used by the codext launcher
 resolv-conf         # DNS resolver configuration for agy & Go network binaries
+glibc-repo          # glibc repository for agy & opencode loaders
 
 # ── JSON / data ──
 jq

@@ -32,8 +32,25 @@ fi
 # ── 1. Antigravity CLI (agy) ──
 install_agy() {
     info "Checking Antigravity CLI (agy)..."
+
+    # Ensure Termux glibc loader exists (required by agy.va39)
+    if [ -n "${PREFIX:-}" ] && command -v pkg >/dev/null 2>&1; then
+        local glibc_loader="${PREFIX}/glibc/lib/ld-linux-aarch64.so.1"
+        if [ ! -f "$glibc_loader" ]; then
+            info "Installing glibc-repo and glibc (required by agy standalone port)..."
+            DEBIAN_FRONTEND=noninteractive pkg install -y glibc-repo resolv-conf >/dev/null 2>&1 || true
+            DEBIAN_FRONTEND=noninteractive pkg install -y glibc glibc-runner >/dev/null 2>&1 || warn "glibc package install had warnings."
+        fi
+    fi
+
     if command -v agy >/dev/null 2>&1; then
-        success "agy already installed: $(command -v agy)"
+        local glibc_loader="${PREFIX:-/data/data/com.termux/files/usr}/glibc/lib/ld-linux-aarch64.so.1"
+        if [ -f "$glibc_loader" ]; then
+            success "agy already installed and glibc loader ready: $(command -v agy)"
+        else
+            warn "agy is present but glibc loader is missing; re-running wallentx installer..."
+            curl -fsSL https://raw.githubusercontent.com/wallentx/antigravity-cli-termux/dev/install.sh | bash || true
+        fi
     else
         info "Installing agy (Termux standalone VA39 port by wallentx)..."
         if curl -fsSL https://raw.githubusercontent.com/wallentx/antigravity-cli-termux/dev/install.sh | bash; then

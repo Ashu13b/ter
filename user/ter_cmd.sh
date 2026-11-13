@@ -359,7 +359,9 @@ EOF
                 if [ -f "$agy_dir/agy.va39" ] || [ -f "$HOME/.local/bin/agy.va39" ] || [ -f "${PREFIX:-/data/data/com.termux/files/usr}/bin/agy.va39" ]; then
                     agy_patch="VA39 patched"
                 fi
-                if [ -n "${PREFIX:-}" ] && [ ! -r "$PREFIX/etc/resolv.conf" ]; then
+                if [ -n "${PREFIX:-}" ] && [ ! -f "$PREFIX/glibc/lib/ld-linux-aarch64.so.1" ]; then
+                    agy_warn=" (glibc loader missing; run 'pkg install glibc-repo && pkg install glibc')"
+                elif [ -n "${PREFIX:-}" ] && [ ! -r "$PREFIX/etc/resolv.conf" ]; then
                     agy_warn=" (resolv.conf missing; run 'pkg install resolv-conf')"
                 fi
                 local agy_token="${AGY_DIR:-$HOME/.gemini/antigravity-cli}/antigravity-oauth-token"
