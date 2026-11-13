@@ -17,9 +17,20 @@ echo "Repo: $REPO_URL"
 echo "Dest: $REPO_DIR"
 echo ""
 
-# 1. Verify we're inside Termux.
+# 1. Verify we're inside Termux & ensure reliable DNS resolution.
 if [ -z "${PREFIX:-}" ] || [ ! -d "/data/data/com.termux" ]; then
     warn "This doesn't look like Termux. Continuing anyway."
+elif [ -d "$PREFIX/etc" ]; then
+    # Auto-seed multi-provider DNS so Go/glibc/git network calls never time out
+    if [ ! -s "$PREFIX/etc/resolv.conf" ] || ! grep -q "nameserver" "$PREFIX/etc/resolv.conf" 2>/dev/null; then
+        cat << 'EOF' > "$PREFIX/etc/resolv.conf" 2>/dev/null || true
+nameserver 1.1.1.1
+nameserver 8.8.8.8
+nameserver 1.0.0.1
+nameserver 8.8.4.4
+options timeout:2 attempts:2
+EOF
+    fi
 fi
 
 # 2. Refresh package index & ensure git (skip if git already present).

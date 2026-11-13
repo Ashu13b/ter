@@ -14,6 +14,19 @@ TARGET_AGENT="${1:-all}"
 
 echo -e "\n\e[1;35m══ TER: Clean AI Agents Installer ══\e[0m\n"
 
+# 0. Ensure reliable DNS in Termux before any network downloads
+if [ -n "${PREFIX:-}" ] && [ -d "$PREFIX/etc" ]; then
+    if [ ! -s "$PREFIX/etc/resolv.conf" ] || ! grep -q "nameserver" "$PREFIX/etc/resolv.conf" 2>/dev/null; then
+        cat << 'EOF' > "$PREFIX/etc/resolv.conf" 2>/dev/null || true
+nameserver 1.1.1.1
+nameserver 8.8.8.8
+nameserver 1.0.0.1
+nameserver 8.8.4.4
+options timeout:2 attempts:2
+EOF
+    fi
+fi
+
 # 1. Base Termux dependencies check
 if command -v pkg >/dev/null 2>&1; then
     info "Verifying base packages (curl, ca-certificates, libc++, nodejs, tinyproxy, resolv-conf, glibc-repo)..."
