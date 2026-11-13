@@ -11,6 +11,14 @@ success() { echo -e "\e[32m[OK]\e[0m $*"; }
 REPO_DIR=$(cd "$(dirname "$0")" && pwd)
 TARGET="$HOME/.shell.d"
 
+# Parse CLI arguments early
+for arg in "$@"; do
+    case "$arg" in
+        --skip-pkg) export TER_SKIP_PKG=1 ;;
+        --ai|--with-ai) export TER_INSTALL_AI=1 ;;
+    esac
+done
+
 echo -e "\n\e[1;35m══ TER: Termux Environment Installer ══\e[0m\n"
 
 # Install required packages (idempotent — pkg is a no-op if already present).
@@ -19,13 +27,23 @@ if [ -f "$REPO_DIR/packages.txt" ] && command -v pkg >/dev/null 2>&1; then
     mapfile -t PKGS < <(sed -E 's/[[:space:]]*#.*$//' "$REPO_DIR/packages.txt" | awk 'NF { print $1 }')
     if [ "${#PKGS[@]}" -gt 0 ] && [ "${TER_SKIP_PKG:-0}" != "1" ]; then
         info "Ensuring packages: ${PKGS[*]}"
+        # Auto-heal interrupted dpkg state from previously aborted/killed runs
+        dpkg --configure -a >/dev/null 2>&1 || true
         # Preserve user-edited Termux configuration during unattended runs.
         if DEBIAN_FRONTEND=noninteractive pkg install -y \
             -o Dpkg::Options::=--force-confold "${PKGS[@]}" >/dev/null 2>&1; then
             success "Packages OK."
         else
-            echo "Required package installation failed; TER was not deployed." >&2
-            exit 1
+            # Try auto-repairing dpkg once in case of lock/interrupted package
+            dpkg --configure -a >/dev/null 2>&1 || true
+            if DEBIAN_FRONTEND=noninteractive pkg install -y \
+                -o Dpkg::Options::=--force-confold "${PKGS[@]}" >/dev/null 2>&1; then
+                success "Packages OK (after dpkg repair)."
+            else
+                echo "Required package installation failed; TER was not deployed." >&2
+                echo "Tip: Run 'dpkg --configure -a' or use 'TER_SKIP_PKG=1 bash install.sh' if packages are already installed." >&2
+                exit 1
+            fi
         fi
     fi
 fi

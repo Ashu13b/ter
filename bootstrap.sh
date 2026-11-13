@@ -22,12 +22,16 @@ if [ -z "${PREFIX:-}" ] || [ ! -d "/data/data/com.termux" ]; then
     warn "This doesn't look like Termux. Continuing anyway."
 fi
 
-# 2. Refresh package index (Termux mirrors can be flaky on first install).
+# 2. Refresh package index & ensure git (skip if git already present).
 if command -v pkg >/dev/null 2>&1; then
-    info "Updating package index..."
-    pkg update -y >/dev/null 2>&1 || warn "pkg update had warnings."
-    info "Installing git (needed to clone the repo)..."
-    pkg install -y git >/dev/null 2>&1 || { warn "git install failed; cannot continue."; exit 1; }
+    # Auto-repair any interrupted dpkg state from previous aborted attempts
+    dpkg --configure -a >/dev/null 2>&1 || true
+    if ! command -v git >/dev/null 2>&1; then
+        info "Updating package index..."
+        DEBIAN_FRONTEND=noninteractive pkg update -y >/dev/null 2>&1 || warn "pkg update had warnings."
+        info "Installing git (needed to clone the repo)..."
+        DEBIAN_FRONTEND=noninteractive pkg install -y git >/dev/null 2>&1 || { warn "git install failed; cannot continue."; exit 1; }
+    fi
 fi
 
 # 3. Clone or update repo.
@@ -43,8 +47,14 @@ fi
 success "Handing off to install.sh"
 bash "$REPO_DIR/install.sh" "$@"
 
-# 5. Sanity check.
-if [ -x "$REPO_DIR/smoke.sh" ]; then
+# 5. Sanity check (optional).
+RUN_SMOKE=0
+for arg in "$@"; do
+    case "$arg" in
+        --smoke) RUN_SMOKE=1 ;;
+    esac
+done
+if [ "$RUN_SMOKE" -eq 1 ] && [ -x "$REPO_DIR/smoke.sh" ]; then
     info "Running smoke test..."
     bash "$REPO_DIR/smoke.sh" || warn "smoke test failed — inspect the output above."
 fi
