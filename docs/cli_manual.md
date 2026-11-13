@@ -21,6 +21,7 @@ Welcome to the command line interface guide for the unified **TER OS** Termux en
 | `alm` | Utility | Interactive shell alias manager (list, add, edit, reload) | `alm -h` / `alm --help` |
 | `apps` | Registry | Termux plug-in app registry loader and manifest visualizer | `apps -h` |
 | `codext` | AI / Network | OpenAI Codex launcher with auto-tinyproxy and Termux TLS cert fixes | `codext --help` |
+| `opencode` | AI / Environment | OpenCode CLI launcher with Termux glibc bridge and title guard | `opencode --help` |
 | `agy-account` | AI / Account | Antigravity CLI account switcher, profile manager, and session rotator | `agy-account -h` |
 | `airlink` | AI / Auth | Cross-device auth bridge, mobile gateway, & terminal URL toolkit | `airlink -h` |
 | `url-heal` | Utility | Fixes soft-wrapped, newline-split, or WhatsApp-broken URLs | `url-heal -h` |

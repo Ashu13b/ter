@@ -4,7 +4,7 @@
 set -u
 
 REPO="$(cd "$(dirname "$0")" && pwd)"
-EXPECT="re cls scan adbcon optimize tabname apps ter dvop adb-apk codext app agy-account airlink url-heal qr auth-code"
+EXPECT="re cls scan adbcon optimize tabname apps ter dvop adb-apk codext app agy-account airlink url-heal qr auth-code opencode"
 FAIL=0
 SMOKE_OUTPUT=$(mktemp "${TMPDIR:-/tmp}/ter-smoke.XXXXXX") || exit 1
 trap 'rm -f "$SMOKE_OUTPUT"' EXIT
@@ -68,12 +68,12 @@ check_isolated_install() {
         if [ "$shell" = "bash" ]; then
             HOME="$test_home" TMUX=ter-smoke TER_LOADED=1 TER_LOADED_PID=1 \
                 bash --noprofile --norc -c \
-                'source "$HOME/.bashrc"; type ter >/dev/null && type apps >/dev/null && type codext >/dev/null && type agy-account >/dev/null && type airlink >/dev/null && type url-heal >/dev/null && type qr >/dev/null && type auth-code >/dev/null' \
+                'source "$HOME/.bashrc"; type ter >/dev/null && type apps >/dev/null && type codext >/dev/null && type agy-account >/dev/null && type airlink >/dev/null && type url-heal >/dev/null && type qr >/dev/null && type auth-code >/dev/null && type opencode >/dev/null' \
                 || loader_rc=1
         else
             HOME="$test_home" TMUX=ter-smoke TER_LOADED=1 TER_LOADED_PID=1 \
                 zsh -f -c \
-                'source "$HOME/.zshrc"; type ter >/dev/null && type apps >/dev/null && type codext >/dev/null && type agy-account >/dev/null && type airlink >/dev/null && type url-heal >/dev/null && type qr >/dev/null && type auth-code >/dev/null' \
+                'source "$HOME/.zshrc"; type ter >/dev/null && type apps >/dev/null && type codext >/dev/null && type agy-account >/dev/null && type airlink >/dev/null && type url-heal >/dev/null && type qr >/dev/null && type auth-code >/dev/null && type opencode >/dev/null' \
                 || loader_rc=1
         fi
     done
@@ -805,6 +805,16 @@ finally:
     echo "  [ ok ] airlink suite operations"
 }
 
+check_ai_diagnostics() {
+    local diag_output
+    diag_output=$(REPO="$REPO" TER_REPO_DIR="$REPO" bash -c 'source "'$REPO'/user/ter_cmd.sh"; ter diagnose ai' 2>/dev/null)
+    if echo "$diag_output" | grep -Fq "AI Agents & Runtime Diagnostics"; then
+        echo "  [ ok ] ter diagnose AI runner"
+    else
+        fail "ter diagnose AI runner output mismatch"
+    fi
+}
+
 echo "TER smoke test — $REPO"
 check_syntax
 check_isolated_install
@@ -815,6 +825,7 @@ check_codext_scope
 check_tab_title
 check_agy_account
 check_airlink
+check_ai_diagnostics
 # zsh doesn't support --noprofile; use -f instead.
 run_in bash "bash"
 if command -v zsh >/dev/null 2>&1; then

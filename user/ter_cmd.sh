@@ -212,7 +212,7 @@ EOF
         echo "  ter wizard    First-run setup (git, ssh, gh, secrets)"
         echo "  ter toggle    tmux|welcome|status"
         echo "  ter theme     Switch eye-preserving themes ('ter theme next' rotates)"
-        echo "  ter doctor    Check repo vs deployed drift"
+        echo "  ter doctor    Check repo vs deployed drift & runtime health (or diagnose)"
         echo "  ter sync      Copy drifted runtime files back to repo"
         echo "  ter update    git pull + redeploy"
         echo "  ter snapshot  Diagnose pkg/storage state → device.lock"
@@ -246,82 +246,170 @@ EOF
         return
     fi
 
-    # Diagnostics check for doctor
-    if [ "$1" = "doctor" ]; then
+    # Diagnostics check for doctor / diagnose
+    if [ "$1" = "doctor" ] || [ "$1" = "diagnose" ]; then
         local repo="${TER_REPO_DIR:-$HOME/ter}"
         local live="$HOME/.shell.d"
-        local diffs=0 quiet=0
+        local diffs=0 quiet=0 only_ai=0
         [ "${2:-}" = "-q" ] || [ "${2:-}" = "--quiet" ] && quiet=1
-        [ "$quiet" -eq 0 ] && echo -e "\n\033[1;36m  🩺 TER Doctor — repo vs runtime check\033[0m"
-        for dir in core network user docs; do
-            [ -d "$repo/$dir" ] || continue
-            while IFS= read -r f; do
-                rel="${f#$repo/$dir/}"
-                target="$live/$dir/$rel"
-                _ter_is_ignored "$dir/$rel" && continue
-                if [ ! -e "$target" ]; then
-                    [ "$quiet" -eq 0 ] && echo -e "  \033[1;33m+ missing\033[0m  $dir/$rel"
-                    diffs=$((diffs+1))
-                elif ! cmp -s "$f" "$target"; then
-                    [ "$quiet" -eq 0 ] && echo -e "  \033[1;31m≠ drift  \033[0m  $dir/$rel"
-                    diffs=$((diffs+1))
-                fi
-            done < <(find "$repo/$dir" -type f 2>/dev/null)
-        done
-        # Reverse: files in live but not in repo (excluding apps/ and ignored files)
-        for dir in core network user docs; do
-            [ -d "$live/$dir" ] || continue
-            while IFS= read -r f; do
-                rel="${f#$live/$dir/}"
-                _ter_is_ignored "$dir/$rel" && continue
-                if [ ! -e "$repo/$dir/$rel" ]; then
-                    [ "$quiet" -eq 0 ] && echo -e "  \033[1;35m? new/untracked \033[0m  $dir/$rel"
-                    diffs=$((diffs+1))
-                fi
-            done < <(find "$live/$dir" -type f 2>/dev/null)
-        done
-        if [ "$quiet" -eq 0 ]; then
-            if [ "$diffs" -eq 0 ]; then
-                echo -e "  \033[1;32m✓ clean — repo and runtime match.\033[0m"
-            else
-                echo -e "\n  \033[1;33m$diffs difference(s) found.\033[0m Run 'ter sync' to review and import into repo, or 'bash ~/ter/install.sh' to redeploy."
-            fi
-        elif [ "$diffs" -gt 0 ]; then
-            echo -e "\033[1;33m⚠ ter doctor:\033[0m $diffs repo↔runtime drift(s) — run \`ter doctor\` for detail."
-        fi
-        # Secrets check: warn on vars listed in template but unset in environment.
-        if [ -f "${TER_REPO_DIR:-$HOME/ter}/secrets.template" ]; then
-            local unset_n=0 missing_vars=""
-            while IFS= read -r line; do
-                local var="${line%%=*}"
-                [ -z "$var" ] && continue
-                if [ -z "$(printenv "$var" 2>/dev/null)" ]; then
-                    unset_n=$((unset_n+1))
-                    missing_vars="$missing_vars $var"
-                fi
-            done < <(grep -E '^[A-Z_][A-Z0-9_]*=' "${TER_REPO_DIR:-$HOME/ter}/secrets.template")
-            if [ "$unset_n" -gt 0 ]; then
-                if [ "$quiet" -eq 0 ]; then
-                    echo -e "\n  \033[1;33m⚠ $unset_n secret(s) unset:\033[0m$missing_vars"
-                    echo -e "    Edit ~/.config/ter/secrets.env (copy from secrets.template)."
-                fi
-            fi
-        fi
-        # Services health check
-        if [ -f "$PREFIX/etc/ssh/sshd_config" ]; then
-            local sshd_port sshd_status
-            sshd_port=$(awk '/^Port /{print $2; exit}' "$PREFIX/etc/ssh/sshd_config")
-            sshd_port="${sshd_port:-8022}"
-            sshd_status=$(sv status sshd 2>/dev/null | awk '{print $1}')
-            if ! nc -z 127.0.0.1 "$sshd_port" 2>/dev/null; then
-                if [ "$quiet" -eq 1 ]; then
-                    echo -e "\033[1;33m⚠ ter doctor:\033[0m sshd not listening on :$sshd_port — run \`sv up sshd\`."
+        [ "${2:-}" = "ai" ] && only_ai=1
+
+        if [ "$only_ai" -eq 0 ]; then
+            [ "$quiet" -eq 0 ] && echo -e "\n\033[1;36m  🩺 TER Doctor — repo vs runtime check\033[0m"
+            for dir in core network user docs; do
+                [ -d "$repo/$dir" ] || continue
+                while IFS= read -r f; do
+                    rel="${f#$repo/$dir/}"
+                    target="$live/$dir/$rel"
+                    _ter_is_ignored "$dir/$rel" && continue
+                    if [ ! -e "$target" ]; then
+                        [ "$quiet" -eq 0 ] && echo -e "  \033[1;33m+ missing\033[0m  $dir/$rel"
+                        diffs=$((diffs+1))
+                    elif ! cmp -s "$f" "$target"; then
+                        [ "$quiet" -eq 0 ] && echo -e "  \033[1;31m≠ drift  \033[0m  $dir/$rel"
+                        diffs=$((diffs+1))
+                    fi
+                done < <(find "$repo/$dir" -type f 2>/dev/null)
+            done
+            # Reverse: files in live but not in repo (excluding apps/ and ignored files)
+            for dir in core network user docs; do
+                [ -d "$live/$dir" ] || continue
+                while IFS= read -r f; do
+                    rel="${f#$live/$dir/}"
+                    _ter_is_ignored "$dir/$rel" && continue
+                    if [ ! -e "$repo/$dir/$rel" ]; then
+                        [ "$quiet" -eq 0 ] && echo -e "  \033[1;35m? new/untracked \033[0m  $dir/$rel"
+                        diffs=$((diffs+1))
+                    fi
+                done < <(find "$live/$dir" -type f 2>/dev/null)
+            done
+            if [ "$quiet" -eq 0 ]; then
+                if [ "$diffs" -eq 0 ]; then
+                    echo -e "  \033[1;32m✓ clean — repo and runtime match.\033[0m"
                 else
-                    echo -e "\n  \033[1;33m⚠ sshd not listening on :$sshd_port\033[0m (sv: ${sshd_status:-unknown})"
-                    echo -e "    Fix: \033[1;37msv up sshd\033[0m  (or \033[1;37msv restart sshd\033[0m)"
+                    echo -e "\n  \033[1;33m$diffs difference(s) found.\033[0m Run 'ter sync' to review and import into repo, or 'bash ~/ter/install.sh' to redeploy."
+                fi
+            elif [ "$diffs" -gt 0 ]; then
+                echo -e "\033[1;33m⚠ ter doctor:\033[0m $diffs repo↔runtime drift(s) — run \`ter doctor\` for detail."
+            fi
+            # Secrets check: warn on vars listed in template but unset in environment.
+            if [ -f "${TER_REPO_DIR:-$HOME/ter}/secrets.template" ]; then
+                local unset_n=0 missing_vars=""
+                while IFS= read -r line; do
+                    local var="${line%%=*}"
+                    [ -z "$var" ] && continue
+                    if [ -z "$(printenv "$var" 2>/dev/null)" ]; then
+                        unset_n=$((unset_n+1))
+                        missing_vars="$missing_vars $var"
+                    fi
+                done < <(grep -E '^[A-Z_][A-Z0-9_]*=' "${TER_REPO_DIR:-$HOME/ter}/secrets.template")
+                if [ "$unset_n" -gt 0 ]; then
+                    if [ "$quiet" -eq 0 ]; then
+                        echo -e "\n  \033[1;33m⚠ $unset_n secret(s) unset:\033[0m$missing_vars"
+                        echo -e "    Edit ~/.config/ter/secrets.env (copy from secrets.template)."
+                    fi
+                fi
+            fi
+            # Services health check
+            if [ -f "$PREFIX/etc/ssh/sshd_config" ]; then
+                local sshd_port sshd_status
+                sshd_port=$(awk '/^Port /{print $2; exit}' "$PREFIX/etc/ssh/sshd_config")
+                sshd_port="${sshd_port:-8022}"
+                sshd_status=$(sv status sshd 2>/dev/null | awk '{print $1}')
+                if ! nc -w 1 -z 127.0.0.1 "$sshd_port" 2>/dev/null; then
+                    if [ "$quiet" -eq 1 ]; then
+                        echo -e "\033[1;33m⚠ ter doctor:\033[0m sshd not listening on :$sshd_port — run \`sv up sshd\`."
+                    else
+                        echo -e "\n  \033[1;33m⚠ sshd not listening on :$sshd_port\033[0m (sv: ${sshd_status:-unknown})"
+                        echo -e "    Fix: \033[1;37msv up sshd\033[0m  (or \033[1;37msv restart sshd\033[0m)"
+                    fi
                 fi
             fi
         fi
+
+        # AI CLI & Runtime Health Diagnostics (adaptive: checks tools only if present)
+        if [ "$quiet" -eq 0 ]; then
+            echo -e "\n\033[1;36m  🤖 AI Agents & Runtime Diagnostics\033[0m"
+
+            # 1. agy (Antigravity CLI)
+            local agy_bin=""
+            agy_bin=$(command -v agy 2>/dev/null || true)
+            if [ -n "$agy_bin" ]; then
+                local agy_ver agy_patch="vanilla/unpatched" agy_warn=""
+                agy_ver=$(agy --version 2>/dev/null | head -n 1 || echo "installed")
+                local agy_dir
+                agy_dir=$(dirname "$agy_bin")
+                if [ -f "$agy_dir/agy.va39" ] || [ -f "$HOME/.local/bin/agy.va39" ] || [ -f "${PREFIX:-/data/data/com.termux/files/usr}/bin/agy.va39" ]; then
+                    agy_patch="VA39 patched"
+                fi
+                if [ -n "${PREFIX:-}" ] && [ ! -r "$PREFIX/etc/resolv.conf" ]; then
+                    agy_warn=" (resolv.conf missing; run 'pkg install resolv-conf')"
+                fi
+                local agy_token="${AGY_DIR:-$HOME/.gemini/antigravity-cli}/antigravity-oauth-token"
+                local agy_acct=""
+                if [ -f "$agy_token" ] && command -v jq >/dev/null 2>&1; then
+                    local email
+                    email=$(jq -r '.id_token_email // .email // empty' "$agy_token" 2>/dev/null)
+                    [ -n "$email" ] && agy_acct=", acct: $email"
+                fi
+                echo -e "  \033[1;32m✓ agy\033[0m        $agy_ver [$agy_patch$agy_acct]$agy_warn"
+            else
+                echo -e "  \033[0;37m○ agy\033[0m        not installed (optional: install via wallentx/antigravity-cli-termux)"
+            fi
+
+            # 2. codex (OpenAI Codex CLI)
+            local codex_bin="${CODEXT_BIN:-$HOME/.local/bin/codex}"
+            if [ ! -x "$codex_bin" ]; then
+                codex_bin=$(command -v codex 2>/dev/null || true)
+            fi
+            if [ -n "$codex_bin" ] && [ -x "$codex_bin" ]; then
+                local codex_fix="codext wrapper available"
+                local codex_warn=""
+                if ! command -v tinyproxy >/dev/null 2>&1; then
+                    codex_warn=" (tinyproxy missing; run 'pkg install tinyproxy' for codext)"
+                elif [ -n "${PREFIX:-}" ] && [ ! -r "$PREFIX/etc/tls/cert.pem" ]; then
+                    codex_warn=" (ca-certificates missing; run 'pkg install ca-certificates')"
+                else
+                    codex_fix="codext proxy ready"
+                fi
+                echo -e "  \033[1;32m✓ codex\033[0m      ready [$codex_fix]$codex_warn"
+            else
+                echo -e "  \033[0;37m○ codex\033[0m      not installed (optional)"
+            fi
+
+            # 3. opencode
+            local oc_bin=""
+            if [ -f "$HOME/.opencode/bin/opencode" ]; then
+                oc_bin="$HOME/.opencode/bin/opencode"
+            elif [ -f "$HOME/.local/share/opencode/bin/opencode" ]; then
+                oc_bin="$HOME/.local/share/opencode/bin/opencode"
+            elif command -v opencode >/dev/null 2>&1; then
+                oc_bin=$(command -v opencode 2>/dev/null || true)
+            fi
+            if [ -n "$oc_bin" ] && [ -e "$oc_bin" ]; then
+                local oc_fix="direct" oc_warn=""
+                if command -v glibc-runner >/dev/null 2>&1; then
+                    oc_fix="glibc-runner ready"
+                elif [ -n "${PREFIX:-}" ] && [ -x "$PREFIX/glibc/bin/ld.so" ]; then
+                    oc_fix="glibc ld.so ready"
+                elif [ -n "${PREFIX:-}" ]; then
+                    oc_warn=" (glibc-runner missing; run 'pkg install glibc-runner')"
+                fi
+                echo -e "  \033[1;32m✓ opencode\033[0m   ready [$oc_fix]$oc_warn"
+            else
+                echo -e "  \033[0;37m○ opencode\033[0m   not installed (optional)"
+            fi
+
+            # 4. claude (Claude Code)
+            if command -v claude >/dev/null 2>&1; then
+                local claude_ver
+                claude_ver=$(claude --version 2>/dev/null | head -n 1 || echo "ready")
+                echo -e "  \033[1;32m✓ claude\033[0m     $claude_ver"
+            else
+                echo -e "  \033[0;37m○ claude\033[0m     not installed (optional: npm i -g @anthropic-ai/claude-code)"
+            fi
+        fi
+
         [ "$quiet" -eq 0 ] && echo ""
         return
     fi

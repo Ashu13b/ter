@@ -199,6 +199,7 @@ snapshot_aux_file "$HOME/.local/bin/airlink"
 snapshot_aux_file "$HOME/.local/bin/url-heal"
 snapshot_aux_file "$HOME/.local/bin/qr"
 snapshot_aux_file "$HOME/.local/bin/auth-code"
+snapshot_aux_file "$HOME/.local/bin/opencode"
 snapshot_aux_file "$REPO_DIR/motd"
 if [ "${TER_SKIP_MOTD:-0}" != "1" ] && [ -e "/data/data/com.termux/files/usr/etc/motd" ]; then
     snapshot_aux_file "/data/data/com.termux/files/usr/etc/motd"
@@ -365,6 +366,16 @@ if [ -f "$REPO_DIR/user/airlink.py" ]; then
     done
     rm -f "$HOME/.local/bin/remurl"
     success "airlink (and url-heal, qr, auth-code) deployed to ~/.local/bin/"
+fi
+
+if [ -f "$REPO_DIR/extras/opencode-runner.sh" ]; then
+    mkdir -p "$HOME/.local/bin"
+    cp "$REPO_DIR/extras/opencode-runner.sh" "$HOME/.local/bin/opencode"
+    chmod +x "$HOME/.local/bin/opencode"
+    if command -v termux-fix-shebang >/dev/null 2>&1; then
+        termux-fix-shebang "$HOME/.local/bin/opencode" >/dev/null 2>&1 || true
+    fi
+    success "opencode deployed to ~/.local/bin/opencode"
 fi
 
 
