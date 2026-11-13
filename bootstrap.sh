@@ -2,6 +2,7 @@
 # TER bootstrap — run on a fresh Termux to get a fully configured environment.
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/Ashu13b/ter/main/bootstrap.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/Ashu13b/ter/main/bootstrap.sh | bash -s -- --ai
 set -e
 
 REPO_URL="${TER_REPO_URL:-https://github.com/Ashu13b/ter.git}"
@@ -40,7 +41,7 @@ fi
 
 # 4. Hand off to the regular installer.
 success "Handing off to install.sh"
-bash "$REPO_DIR/install.sh"
+bash "$REPO_DIR/install.sh" "$@"
 
 # 5. Sanity check.
 if [ -x "$REPO_DIR/smoke.sh" ]; then

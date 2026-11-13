@@ -344,6 +344,11 @@ if [ -f "$REPO_DIR/manifest.json" ]; then
     cp "$REPO_DIR/manifest.json" "$TARGET/manifest.json"
 fi
 
+if [ -d "$REPO_DIR/extras" ]; then
+    mkdir -p "$TARGET/extras"
+    cp -R "$REPO_DIR/extras"/. "$TARGET/extras"/
+fi
+
 if [ -f "$REPO_DIR/user/agy-account.py" ]; then
     mkdir -p "$HOME/.local/bin"
     cp "$REPO_DIR/user/agy-account.py" "$HOME/.local/bin/agy-account"
@@ -552,6 +557,19 @@ mapfile -t backup_dirs < <(ls -1dt -- "$BACKUP_ROOT"/backup_* 2>/dev/null || tru
 for ((i=4; i<${#backup_dirs[@]}; i++)); do
     rm -rf -- "${backup_dirs[$i]}"
 done
+
+# Optional clean AI agents installation (--ai flag or TER_INSTALL_AI=1)
+INSTALL_AI="${TER_INSTALL_AI:-0}"
+for arg in "$@"; do
+    case "$arg" in
+        --ai|--with-ai) INSTALL_AI=1 ;;
+    esac
+done
+
+if [ "$INSTALL_AI" -eq 1 ] && [ -f "$REPO_DIR/extras/install-ai-agents.sh" ]; then
+    info "Installing clean AI agent suite (agy, codex, opencode, claude)..."
+    bash "$REPO_DIR/extras/install-ai-agents.sh" all || info "AI agent setup finished."
+fi
 
 manual_path="$HOME/.shell.d/docs/cli_manual.md"
 echo -e "\n\e[1;32m✔ TER environment installed successfully!\e[0m"

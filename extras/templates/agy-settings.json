@@ -1,0 +1,34 @@
+{
+  "allowNonWorkspaceAccess": true,
+  "altScreenMode": "always",
+  "artifactReviewPolicy": "agent-decides",
+  "model": "Gemini 3.8 Flash (High)",
+  "permissions": {
+    "allow": [
+      "command(find)",
+      "command(head)",
+      "command(ls)",
+      "command(git status)",
+      "command(file)",
+      "command(tail)",
+      "command(tmux)",
+      "command(cd)",
+      "command(git commit)",
+      "command(grep)",
+      "command(strace)",
+      "command(sed)",
+      "command(git diff)",
+      "command(pytest)",
+      "command(netstat)",
+      "command(git checkout)",
+      "command(git merge)",
+      "command(git add)",
+      "command(git log)",
+      "command(git show)",
+      "command(termux-fix-shebang)",
+      "command(awk)"
+    ]
+  },
+  "runningLightSpeed": "slow",
+  "toolPermission": "always-proceed"
+}

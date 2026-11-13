@@ -316,6 +316,28 @@ auth-code                   # Extracts clean '4/0AX...' from clipboard URL or me
 
 ---
 
+### 🤖 Clean AI Agent Suite Installation
+
+To deploy the full AI agent suite (`agy`, `codex`, `opencode`, `claude`) to another phone without accounts or personal tokens:
+
+```bash
+# 1. During initial phone bootstrap:
+curl -fsSL https://raw.githubusercontent.com/Ashu13b/ter/main/bootstrap.sh | bash -s -- --ai
+
+# 2. Or from inside an existing ter install:
+ter install-ai
+
+# 3. Or install a specific agent only:
+ter install-ai agy        # only Antigravity CLI (VA39 standalone port)
+ter install-ai codex      # only OpenAI Codex CLI
+ter install-ai opencode   # only OpenCode CLI + glibc-runner
+ter install-ai claude     # only Claude Code CLI
+```
+
+---
+
+---
+
 ## 3. Troubleshooting & Common Issues
 
 ### ❌ Linker Symbol Errors on `adb` (protobuf / abseil-cpp mismatch)

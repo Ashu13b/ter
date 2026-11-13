@@ -220,6 +220,7 @@ EOF
         echo "  ter shortcut  Pin shortcuts to home screen (add | list | rm)"
         echo "  ter perms     Grant Android/ColorOS permissions for foreground shortcuts"
         echo "  ter account   Antigravity CLI account switcher & rotator (or agy-account)"
+        echo "  ter install-ai Install clean AI agent suite (agy, codex, opencode, claude)"
         echo "  re            Reload shell"
         echo "  tabname       Rename tab"
         echo "  optimize      BG stability & RAM purge"
@@ -243,6 +244,22 @@ EOF
     if [ "$1" = "account" ] || [ "$1" = "agy" ]; then
         shift
         agy-account "$@"
+        return
+    fi
+
+    # Install clean AI agents on demand
+    if [ "$1" = "install-ai" ] || [ "$1" = "setup-ai" ]; then
+        local repo="${TER_REPO_DIR:-$HOME/ter}"
+        local installer="$repo/extras/install-ai-agents.sh"
+        if [ ! -f "$installer" ]; then
+            installer="$HOME/.shell.d/extras/install-ai-agents.sh"
+        fi
+        if [ ! -f "$installer" ]; then
+            echo "ter: installer not found ($installer)" >&2
+            return 1
+        fi
+        shift
+        bash "$installer" "${1:-all}"
         return
     fi
 
