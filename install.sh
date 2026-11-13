@@ -576,17 +576,23 @@ for ((i=4; i<${#backup_dirs[@]}; i++)); do
     rm -rf -- "${backup_dirs[$i]}"
 done
 
-# Optional clean AI agents installation (--ai flag or TER_INSTALL_AI=1)
+# AI agents installation: full suite with --ai, or auto-ensure agy if missing
 INSTALL_AI="${TER_INSTALL_AI:-0}"
 for arg in "$@"; do
     case "$arg" in
         --ai|--with-ai) INSTALL_AI=1 ;;
+        --skip-ai|--no-ai) INSTALL_AI=0; export TER_SKIP_AGY=1 ;;
     esac
 done
 
 if [ "$INSTALL_AI" -eq 1 ] && [ -f "$REPO_DIR/extras/install-ai-agents.sh" ]; then
     info "Installing clean AI agent suite (agy, codex, opencode, claude)..."
     bash "$REPO_DIR/extras/install-ai-agents.sh" all || info "AI agent setup finished."
+elif [ "${TER_SKIP_AGY:-0}" != "1" ] && [ "${TER_SKIP_PKG:-0}" != "1" ] && ! command -v agy >/dev/null 2>&1; then
+    info "Antigravity CLI (agy) not found; auto-installing standalone Termux port..."
+    if [ -f "$REPO_DIR/extras/install-ai-agents.sh" ]; then
+        bash "$REPO_DIR/extras/install-ai-agents.sh" agy || warn "agy setup completed with warnings."
+    fi
 fi
 
 manual_path="$HOME/.shell.d/docs/cli_manual.md"
