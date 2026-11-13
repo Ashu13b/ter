@@ -10,6 +10,19 @@ export MY_NAME="Ashish Yadav"
 # Protected Ports
 export TNL_PROTECTED_PORTS="22 8022 443"
 
+# Ensure Termux DNS resolver is populated for Go & glibc CLIs (e.g. agy, codext)
+if [ -n "${PREFIX:-}" ] && [ -d "$PREFIX/etc" ]; then
+    if [ ! -s "$PREFIX/etc/resolv.conf" ] || ! grep -q "nameserver" "$PREFIX/etc/resolv.conf" 2>/dev/null; then
+        cat << 'EOF' > "$PREFIX/etc/resolv.conf" 2>/dev/null || true
+nameserver 1.1.1.1
+nameserver 8.8.8.8
+nameserver 1.0.0.1
+nameserver 8.8.4.4
+options timeout:2 attempts:2
+EOF
+    fi
+fi
+
 # Let TER's tab-title logic (tab_title.sh) control the terminal/session name.
 # These CLIs would otherwise overwrite it while running. codex has no env var —
 # disable via `[tui] terminal_title = []` in ~/.codex/config.toml.

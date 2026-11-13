@@ -48,6 +48,20 @@ if [ -f "$REPO_DIR/packages.txt" ] && command -v pkg >/dev/null 2>&1; then
     fi
 fi
 
+# Ensure reliable DNS resolution for glibc & Go network binaries
+if [ -n "${PREFIX:-}" ] && [ -d "$PREFIX/etc" ]; then
+    if [ ! -s "$PREFIX/etc/resolv.conf" ] || ! grep -q "nameserver" "$PREFIX/etc/resolv.conf" 2>/dev/null; then
+        info "Configuring default DNS resolver in $PREFIX/etc/resolv.conf..."
+        cat << 'EOF' > "$PREFIX/etc/resolv.conf" 2>/dev/null || true
+nameserver 1.1.1.1
+nameserver 8.8.8.8
+nameserver 1.0.0.1
+nameserver 8.8.4.4
+options timeout:2 attempts:2
+EOF
+    fi
+fi
+
 # Storage permission (cd ws / cd dl depend on ~/storage existing).
 if [ ! -d "$HOME/storage" ] && command -v termux-setup-storage >/dev/null 2>&1; then
     info "Requesting storage permission (accept the Android prompt)..."
