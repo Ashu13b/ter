@@ -16,9 +16,9 @@ echo -e "\n\e[1;35m══ TER: Clean AI Agents Installer ══\e[0m\n"
 
 # 1. Base Termux dependencies check
 if command -v pkg >/dev/null 2>&1; then
-    info "Verifying base packages (curl, ca-certificates, nodejs, tinyproxy, resolv-conf)..."
+    info "Verifying base packages (curl, ca-certificates, libc++, nodejs, tinyproxy, resolv-conf, glibc-repo)..."
     local_pkgs=()
-    for p in curl ca-certificates nodejs tinyproxy resolv-conf; do
+    for p in curl ca-certificates libc++ nodejs tinyproxy resolv-conf glibc-repo; do
         if ! dpkg -s "$p" >/dev/null 2>&1; then
             local_pkgs+=("$p")
         fi
@@ -26,6 +26,12 @@ if command -v pkg >/dev/null 2>&1; then
     if [ "${#local_pkgs[@]}" -gt 0 ]; then
         info "Installing missing dependencies: ${local_pkgs[*]}"
         DEBIAN_FRONTEND=noninteractive pkg install -y "${local_pkgs[@]}" >/dev/null 2>&1 || warn "Some packages could not be installed automatically."
+    fi
+
+    # Ensure Termux glibc packages are installed (provides ld-linux-aarch64.so.1)
+    if [ -n "${PREFIX:-}" ] && [ ! -f "$PREFIX/glibc/lib/ld-linux-aarch64.so.1" ]; then
+        info "Installing glibc and glibc-runner for native AI agents..."
+        DEBIAN_FRONTEND=noninteractive pkg install -y glibc glibc-runner >/dev/null 2>&1 || warn "glibc install returned a warning."
     fi
 fi
 
@@ -140,8 +146,12 @@ install_claude() {
     if command -v claude >/dev/null 2>&1; then
         success "claude already installed: $(command -v claude)"
     else
-        if ! command -v npm >/dev/null 2>&1 && command -v pkg >/dev/null 2>&1; then
-            pkg install -y nodejs >/dev/null 2>&1 || true
+        if command -v pkg >/dev/null 2>&1; then
+            # Ensure libc++ is up to date so node doesn't fail with missing C++ symbols
+            if ! node -v >/dev/null 2>&1; then
+                info "Updating nodejs & libc++ runtime..."
+                DEBIAN_FRONTEND=noninteractive pkg install -y libc++ nodejs >/dev/null 2>&1 || true
+            fi
         fi
         if command -v npm >/dev/null 2>&1; then
             info "Running: npm install -g @anthropic-ai/claude-code..."

@@ -17,6 +17,7 @@ openssh             # ssh client + sshd
 ca-certificates     # TLS trust store for curl/gh/gcloud bootstrap
 
 # ── Languages ──
+libc++              # C++ runtime (essential for node & native modules)
 python              # optimize.py, adb-audit.py, adb-manage.py, make_motd.py
 nodejs              # Claude Code, many CLI tools
 
