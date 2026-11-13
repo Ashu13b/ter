@@ -263,6 +263,19 @@ EOF
         return
     fi
 
+    # Heal DNS and auto-resolve Google API domains
+    if [ "$1" = "fix-dns" ] || [ "$1" = "heal-dns" ] || [ "$1" = "dns" ]; then
+        echo -e "\033[1;34m[INFO]\033[0m Refreshing DNS resolver & Google API hosts..."
+        if type _ter_heal_dns >/dev/null 2>&1; then
+            [ -n "${PREFIX:-}" ] && sed -i '/Auto-resolved Google API hosts/,$d' "$PREFIX/etc/hosts" 2>/dev/null || true
+            _ter_heal_dns
+            echo -e "\033[1;32m[OK]\033[0m DNS & /etc/hosts refreshed successfully."
+        else
+            echo "ter: _ter_heal_dns helper not loaded." >&2
+        fi
+        return
+    fi
+
     # Diagnostics check for doctor / diagnose
     if [ "$1" = "doctor" ] || [ "$1" = "diagnose" ]; then
         local repo="${TER_REPO_DIR:-$HOME/ter}"

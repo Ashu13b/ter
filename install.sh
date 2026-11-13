@@ -48,19 +48,45 @@ if [ -f "$REPO_DIR/packages.txt" ] && command -v pkg >/dev/null 2>&1; then
     fi
 fi
 
-# Ensure reliable DNS resolution for glibc & Go network binaries
-if [ -n "${PREFIX:-}" ] && [ -d "$PREFIX/etc" ]; then
-    if [ ! -s "$PREFIX/etc/resolv.conf" ] || ! grep -q "nameserver" "$PREFIX/etc/resolv.conf" 2>/dev/null; then
-        info "Configuring default DNS resolver in $PREFIX/etc/resolv.conf..."
-        cat << 'EOF' > "$PREFIX/etc/resolv.conf" 2>/dev/null || true
+# Ensure reliable DNS resolution and Google API hosts for glibc & Go network binaries
+_ter_heal_dns() {
+    [ -n "${PREFIX:-}" ] && [ -d "$PREFIX/etc" ] || return 0
+    local etc_dir="$PREFIX/etc"
+    cat << 'EOF' > "$etc_dir/resolv.conf" 2>/dev/null || true
 nameserver 1.1.1.1
 nameserver 8.8.8.8
 nameserver 1.0.0.1
 nameserver 8.8.4.4
 options timeout:2 attempts:2
 EOF
+
+    if [ -d "$PREFIX/glibc/etc" ]; then
+        [ -e "$PREFIX/glibc/etc/resolv.conf" ] || ln -sf "$etc_dir/resolv.conf" "$PREFIX/glibc/etc/resolv.conf" 2>/dev/null || true
+        [ -e "$PREFIX/glibc/etc/hosts" ] || ln -sf "$etc_dir/hosts" "$PREFIX/glibc/etc/hosts" 2>/dev/null || true
     fi
-fi
+
+    if command -v python3 >/dev/null 2>&1; then
+        python3 -c '
+import socket
+from pathlib import Path
+h = Path("'"$etc_dir"'/hosts")
+content = h.read_text() if h.exists() else "127.0.0.1 localhost\n::1 ip6-localhost\n"
+domains = ["oauth2.googleapis.com", "accounts.google.com", "cloudaicompanion.googleapis.com", "generativelanguage.googleapis.com", "cloudresourcemanager.googleapis.com", "iam.googleapis.com"]
+new_lines = []
+for d in domains:
+    if d not in content:
+        try:
+            ip = socket.gethostbyname(d)
+            new_lines.append(f"{ip} {d}")
+        except Exception:
+            pass
+if new_lines:
+    with open(h, "a") as f:
+        f.write("\n# Auto-resolved Google API hosts for glibc/Go network stability\n" + "\n".join(new_lines) + "\n")
+' 2>/dev/null || true
+    fi
+}
+_ter_heal_dns
 
 # Storage permission (cd ws / cd dl depend on ~/storage existing).
 if [ ! -d "$HOME/storage" ] && command -v termux-setup-storage >/dev/null 2>&1; then
