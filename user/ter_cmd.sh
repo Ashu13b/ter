@@ -267,8 +267,8 @@ EOF
     if [ "$1" = "fix-dns" ] || [ "$1" = "heal-dns" ] || [ "$1" = "dns" ]; then
         echo -e "\033[1;34m[INFO]\033[0m Refreshing DNS resolver & Google API hosts..."
         if type _ter_heal_dns >/dev/null 2>&1; then
-            [ -n "${PREFIX:-}" ] && sed -i '/Auto-resolved Google API hosts/,$d' "$PREFIX/etc/hosts" 2>/dev/null || true
-            _ter_heal_dns
+            # --force bypasses the freshness TTL and repins every domain.
+            _ter_heal_dns --force
             echo -e "\033[1;32m[OK]\033[0m DNS & /etc/hosts refreshed successfully."
         else
             echo "ter: _ter_heal_dns helper not loaded." >&2

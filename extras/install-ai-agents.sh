@@ -12,37 +12,80 @@ SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 TEMPLATES_DIR="$SCRIPT_DIR/templates"
 TARGET_AGENT="${1:-all}"
 
+# ── Pinned third-party installs ──
+# Nothing is piped into a shell: each installer is downloaded to a temp file and
+# only then executed, so a truncated or tampered download can never half-run.
+# Versions are pinned deliberately — bump them here instead of tracking `latest`,
+# so an upstream break (or a hijacked release) needs a reviewed commit to land.
+# Override per run with TER_AGY_VERSION / TER_CODEX_VERSION / TER_OPENCODE_VERSION;
+# set the *_SHA256 variables to additionally require an exact checksum.
+TER_AGY_VERSION="${TER_AGY_VERSION:-v1.5.5}"
+TER_CODEX_VERSION="${TER_CODEX_VERSION:-0.169.0}"
+TER_OPENCODE_VERSION="${TER_OPENCODE_VERSION:-2.2.6}"
+
+make_workdir() {
+    mktemp -d "${TMPDIR:-/tmp}/ter-agents.XXXXXX" 2>/dev/null || mktemp -d
+}
+
+# fetch_pinned <url> <dest> [sha256]
+fetch_pinned() {
+    local url="$1" dest="$2" want="${3:-}" got
+    curl -fsSL --retry 2 --connect-timeout 20 -o "$dest" "$url" || return 1
+    if [ ! -s "$dest" ]; then
+        rm -f "$dest"
+        return 1
+    fi
+    if [ -n "$want" ]; then
+        got=$(sha256sum "$dest" 2>/dev/null | cut -d' ' -f1)
+        if [ "$got" != "$want" ]; then
+            warn "Checksum mismatch for $url (expected $want, got ${got:-none})."
+            rm -f "$dest"
+            return 1
+        fi
+    fi
+}
+
+# run_script <file> [args...] — refuse anything that is not a shell script.
+run_script() {
+    local script="$1"
+    shift
+    if [ "$(head -c 2 "$script" 2>/dev/null)" != "#!" ]; then
+        warn "Refusing to execute $script: not a shell script."
+        return 1
+    fi
+    bash "$script" "$@"
+}
+
+# Install agy from the pinned wallentx release, preferring the versioned archive
+# over the installer's own "latest" lookup.
+_agy_install_pinned() {
+    local base="https://github.com/wallentx/antigravity-cli-termux"
+    local work installer archive rc
+    work=$(make_workdir) || { warn "Could not create a temp dir for the agy installer."; return 1; }
+    installer="$work/agy-install.sh"
+    archive="$work/antigravity-termux-standalone.tar.gz"
+    if ! fetch_pinned "$base/raw/${TER_AGY_VERSION}/install.sh" "$installer" "${TER_AGY_INSTALL_SHA256:-}"; then
+        warn "Could not fetch the pinned agy installer (${TER_AGY_VERSION})."
+        rm -rf "$work"
+        return 1
+    fi
+    if grep -q 'AGY_INSTALL_URL' "$installer" 2>/dev/null \
+        && fetch_pinned "$base/releases/download/${TER_AGY_VERSION}/antigravity-termux-standalone.tar.gz" "$archive" "${TER_AGY_ARCHIVE_SHA256:-}"; then
+        if ( export AGY_INSTALL_URL="file://$archive"; run_script "$installer" ); then rc=0; else rc=1; fi
+    else
+        warn "Pinned agy archive unavailable; using the ${TER_AGY_VERSION} installer's own download."
+        if run_script "$installer"; then rc=0; else rc=1; fi
+    fi
+    rm -rf "$work"
+    return "$rc"
+}
+
 echo -e "\n\e[1;35m══ TER: Clean AI Agents Installer ══\e[0m\n"
 
-# 0. Ensure reliable DNS in Termux before any network downloads
-if [ -n "${PREFIX:-}" ] && [ -d "$PREFIX/etc" ]; then
-    cat << 'EOF' > "$PREFIX/etc/resolv.conf" 2>/dev/null || true
-nameserver 1.1.1.1
-nameserver 8.8.8.8
-nameserver 1.0.0.1
-nameserver 8.8.4.4
-options timeout:2 attempts:2
-EOF
-    if command -v python3 >/dev/null 2>&1; then
-        python3 -c '
-import socket
-from pathlib import Path
-h = Path("'"$PREFIX"'/etc/hosts")
-content = h.read_text() if h.exists() else "127.0.0.1 localhost\n::1 ip6-localhost\n"
-domains = ["oauth2.googleapis.com", "accounts.google.com", "cloudaicompanion.googleapis.com", "generativelanguage.googleapis.com", "cloudresourcemanager.googleapis.com", "iam.googleapis.com"]
-new_lines = []
-for d in domains:
-    if d not in content:
-        try:
-            ip = socket.gethostbyname(d)
-            new_lines.append(f"{ip} {d}")
-        except Exception:
-            pass
-if new_lines:
-    with open(h, "a") as f:
-        f.write("\n# Auto-resolved Google API hosts for glibc/Go network stability\n" + "\n".join(new_lines) + "\n")
-' 2>/dev/null || true
-    fi
+# 0. Ensure reliable DNS in Termux before any network downloads. Healing is
+# shared with the shell modules and install.sh — one implementation only.
+if [ -f "$SCRIPT_DIR/../core/net_heal.sh" ]; then
+    . "$SCRIPT_DIR/../core/net_heal.sh"
 fi
 
 # 1. Base Termux dependencies check
@@ -85,12 +128,12 @@ install_agy() {
         if [ -f "$glibc_loader" ]; then
             success "agy already installed and glibc loader ready: $(command -v agy)"
         else
-            warn "agy is present but glibc loader is missing; re-running wallentx installer..."
-            curl -fsSL https://raw.githubusercontent.com/wallentx/antigravity-cli-termux/dev/install.sh | bash || true
+            warn "agy is present but glibc loader is missing; re-running pinned wallentx installer..."
+            _agy_install_pinned || true
         fi
     else
-        info "Installing agy (Termux standalone VA39 port by wallentx)..."
-        if curl -fsSL https://raw.githubusercontent.com/wallentx/antigravity-cli-termux/dev/install.sh | bash; then
+        info "Installing agy ${TER_AGY_VERSION} (Termux standalone VA39 port by wallentx)..."
+        if _agy_install_pinned; then
             success "agy installed successfully."
         else
             warn "Failed to install agy automatically via wallentx installer."
@@ -117,14 +160,17 @@ install_codex() {
     if [ -x "$codex_bin" ] || command -v codex >/dev/null 2>&1; then
         success "codex already installed."
     else
-        info "Installing codex standalone binary..."
-        if curl -fsSL https://chatgpt.com/codex/install.sh | sh 2>/dev/null; then
-            success "codex installed via official script."
-        elif command -v npm >/dev/null 2>&1; then
-            info "Falling back to npm install -g @openai/codex..."
-            npm install -g @openai/codex >/dev/null 2>&1 && success "codex installed via npm." || warn "Failed to install codex via npm."
+        # npm is the only route that accepts a version *and* verifies the
+        # artifact itself (registry sha512), so the old `curl | sh` is gone.
+        if command -v npm >/dev/null 2>&1; then
+            info "Installing codex ${TER_CODEX_VERSION} via npm (version-pinned)..."
+            if npm install -g "@openai/codex@${TER_CODEX_VERSION}" >/dev/null 2>&1; then
+                success "codex ${TER_CODEX_VERSION} installed via npm."
+            else
+                warn "Failed to install codex ${TER_CODEX_VERSION} via npm."
+            fi
         else
-            warn "Could not install codex automatically."
+            warn "npm is required to install the pinned codex build but was not found."
         fi
     fi
 
@@ -151,12 +197,21 @@ install_opencode() {
     if [ -f "$HOME/.opencode/bin/opencode" ] || command -v opencode >/dev/null 2>&1; then
         success "opencode binary already present."
     else
-        info "Installing opencode via official installer..."
-        if curl -fsSL https://opencode.ai/v2/install | bash; then
-            success "opencode installed successfully."
+        local work installer
+        info "Installing opencode ${TER_OPENCODE_VERSION} (version-pinned)..."
+        work=$(make_workdir) || { warn "Could not create a temp dir for the opencode installer."; return; }
+        installer="$work/opencode-install.sh"
+        # The release-tagged script is immutable; the redirect URL stays as a
+        # fallback, and either way the shell is asked for the pinned version.
+        if ! fetch_pinned "https://raw.githubusercontent.com/anomalyco/opencode/v${TER_OPENCODE_VERSION}/install" "$installer" "${TER_OPENCODE_INSTALL_SHA256:-}" \
+            && ! fetch_pinned "https://opencode.ai/v2/install" "$installer" "${TER_OPENCODE_INSTALL_SHA256:-}"; then
+            warn "Could not fetch the opencode installer."
+        elif run_script "$installer" --version "$TER_OPENCODE_VERSION"; then
+            success "opencode ${TER_OPENCODE_VERSION} installed successfully."
         else
-            warn "Failed to install opencode automatically."
+            warn "Failed to install opencode ${TER_OPENCODE_VERSION} automatically."
         fi
+        rm -rf "$work"
     fi
 
     # Deploy TER's wrapper to ~/.local/bin/opencode if runner script exists

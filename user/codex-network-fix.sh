@@ -16,6 +16,12 @@ codext() (
     local codex_bin="${CODEXT_BIN:-$HOME/.local/bin/codex}"
     local port proxy_url no_proxy_value i
 
+    # Only the standalone installer writes ~/.local/bin/codex; the version-pinned
+    # npm install of install-ai-agents.sh lands in $PREFIX/bin instead.
+    if [ ! -x "$codex_bin" ] && command -v codex >/dev/null 2>&1; then
+        codex_bin=$(command -v codex)
+    fi
+
     if [ ! -x "$codex_bin" ]; then
         echo "codex executable not found at $codex_bin"
         return 1

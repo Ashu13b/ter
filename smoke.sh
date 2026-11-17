@@ -346,6 +346,84 @@ check_sync_paths() {
     rm -rf "$test_home"
 }
 
+check_net_heal() {
+    local test_dir prefix hosts ok dns mode before after
+    test_dir=$(mktemp -d "${TMPDIR:-/tmp}/ter-net-heal.XXXXXX") || { fail "could not create net-heal test dir"; return; }
+    prefix="$test_dir/prefix"
+    hosts="$prefix/etc/hosts"
+    mkdir -p "$prefix/etc"
+
+    # Source the shared module in a clean shell: it heals once at source time,
+    # exactly like the loader, and "$2" forces a refresh.
+    heal() {
+        PREFIX="$1" bash --noprofile --norc -c '. "$1"; _ter_heal_dns "$2"' _ "$REPO/core/net_heal.sh" "${2:-}"
+    }
+
+    dns=0
+    python3 -c 'import socket; socket.gethostbyname("oauth2.googleapis.com")' >/dev/null 2>&1 && dns=1
+    [ "$dns" -eq 1 ] || echo "  [note] net-heal: no DNS here, skipping pin/TTL assertions"
+
+    # Legacy layout: unmarked header + bare pins + user lines, empty resolv.conf.
+    : > "$prefix/etc/resolv.conf"
+    printf '%s\n' \
+        '127.0.0.1 localhost' \
+        '10.9.9.9 keep.example.test' \
+        '# Auto-resolved Google API hosts for glibc/Go network stability' \
+        '203.0.113.9 oauth2.googleapis.com' \
+        '203.0.113.9 accounts.google.com' \
+        > "$hosts"
+    chmod 640 "$hosts"
+
+    heal "$prefix" --force >/dev/null 2>&1
+    heal "$prefix" --force >/dev/null 2>&1
+
+    ok=1
+    # Legacy pins and their header are pruned whether or not DNS works.
+    grep -qF 'Auto-resolved Google API hosts' "$hosts" && ok=0
+    grep -qF '203.0.113.9' "$hosts" && ok=0
+    [ "$(grep -c ' oauth2\.googleapis\.com$' "$hosts")" -le 1 ] || ok=0
+    # Unmanaged lines survive the rewrite.
+    grep -qxF '127.0.0.1 localhost' "$hosts" || ok=0
+    grep -qxF '10.9.9.9 keep.example.test' "$hosts" || ok=0
+    # Repeated runs never duplicate the managed block.
+    [ "$(grep -cF '# >>> TER net-heal >>>' "$hosts")" -le 1 ] || ok=0
+    [ "$(grep -cF '# <<< TER net-heal <<<' "$hosts")" -le 1 ] || ok=0
+    if [ "$dns" -eq 1 ]; then
+        [ "$(grep -cF '# >>> TER net-heal >>>' "$hosts")" = "1" ] || ok=0
+        grep -q '^# TER net-heal stamp [0-9]' "$hosts" || ok=0
+        grep -q ' oauth2\.googleapis\.com$' "$hosts" || ok=0
+    fi
+    # The atomic replace must keep the file mode.
+    mode=$(stat -c %a "$hosts" 2>/dev/null || true)
+    [ -z "$mode" ] || [ "$mode" = "640" ] || ok=0
+    # A missing resolver gets seeded...
+    grep -q '^nameserver ' "$prefix/etc/resolv.conf" || ok=0
+    # ...but a configured one is never clobbered.
+    printf 'nameserver 9.9.9.9\n' > "$prefix/etc/resolv.conf"
+    heal "$prefix" >/dev/null 2>&1
+    [ "$(cat "$prefix/etc/resolv.conf")" = "nameserver 9.9.9.9" ] || ok=0
+    if [ "$dns" -eq 1 ]; then
+        # A fresh block costs no lookup: a plain startup pass leaves it untouched.
+        before=$(cksum < "$hosts")
+        heal "$prefix" >/dev/null 2>&1
+        after=$(cksum < "$hosts")
+        [ "$before" = "$after" ] || ok=0
+        # Past the TTL the stale block is repinned.
+        sed -i 's/^# TER net-heal stamp [0-9]*/# TER net-heal stamp 0/' "$hosts"
+        # Guard against a vacuous assertion if the stamp format ever changes.
+        grep -q '^# TER net-heal stamp 0 ' "$hosts" || ok=0
+        heal "$prefix" >/dev/null 2>&1
+        grep -q '^# TER net-heal stamp 0 ' "$hosts" && ok=0
+    fi
+
+    if [ "$ok" -eq 1 ]; then
+        echo "  [ ok ] net-heal hosts block, TTL refresh & legacy pruning"
+    else
+        fail "net-heal hosts block, TTL refresh & legacy pruning"
+    fi
+    rm -rf "$test_dir"
+}
+
 check_codext_scope() {
     local test_home
     # shellcheck disable=SC1090
@@ -821,6 +899,7 @@ check_isolated_install
 check_package_failure
 check_adb_validation
 check_sync_paths
+check_net_heal
 check_codext_scope
 check_tab_title
 check_agy_account
