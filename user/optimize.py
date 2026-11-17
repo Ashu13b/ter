@@ -477,6 +477,11 @@ def check_battery_optimization(device=None):
     stdout, _, _ = run_adb(["shell", "dumpsys deviceidle whitelist"], device=device)
     return "com.termux" in stdout
 
+def check_battery_sync(device=None):
+    stdout, _, _ = run_adb(["shell", "dumpsys battery"], device=device)
+    is_frozen = "UPDATES STOPPED" in stdout or "UpdatesStopped: true" in stdout
+    return not is_frozen
+
 def check_phantom_processes(device=None):
     stdout_enabled, _, _ = run_adb(["shell", "settings get global settings_enable_monitor_phantom_procs"], device=device)
     stdout_max, _, _ = run_adb(["shell", "device_config get activity_manager max_phantom_processes"], device=device)
@@ -519,16 +524,21 @@ def show_status(full=False):
     wl = get_wake_lock_status(device=device)
     phantom_opt, phantom_raw = check_phantom_processes(device=device)
     battery_opt = check_battery_optimization(device=device)
+    battery_live = check_battery_sync(device=device)
     
     if not full:
         wl_s = "\033[1;32m✓\033[0m" if wl else "\033[1;33m✗\033[0m"
         ph_s = "\033[1;32m✓\033[0m" if phantom_opt else "\033[1;31m✗\033[0m"
         bt_s = "\033[1;32m✓\033[0m" if battery_opt else "\033[1;31m✗\033[0m"
-        all_ok = wl and phantom_opt and battery_opt
+        live_s = "\033[1;32m✓\033[0m" if battery_live else "\033[1;31m✗\033[0m"
+        all_ok = wl and phantom_opt and battery_opt and battery_live
         label = "\033[1;32mSTABLE\033[0m" if all_ok else "\033[1;33mCHECK\033[0m"
-        print(f"\033[1;35m⚙ BG\033[0m  WakeLock:{wl_s}  Phantom:{ph_s}  Battery:{bt_s}  [{label}]  \033[2m(optimize status -f for details)\033[0m")
+        print(f"\033[1;35m⚙ BG\033[0m  WakeLock:{wl_s}  Phantom:{ph_s}  Battery:{bt_s}  Sync:{live_s}  [{label}]  \033[2m(optimize status -f for details)\033[0m")
         if not all_ok:
-            print(f"  \033[33m↳ Run \033[1moptimize fix\033[0;33m to optimize\033[0m")
+            if not battery_live:
+                print(f"  \033[33m↳ Battery sensor frozen! Run \033[1moptimize fix\033[0;33m or \033[1moptimize reset-battery\033[0m")
+            else:
+                print(f"  \033[33m↳ Run \033[1moptimize fix\033[0;33m to optimize\033[0m")
         return
 
     wl_icon = "🟢" if wl else "🟡"
@@ -544,6 +554,11 @@ def show_status(full=False):
     battery_raw = "EXEMPTED" if battery_opt else "RESTRICTED"
     battery_state = f"\033[1;32m{battery_raw}\033[0m" if battery_opt else f"\033[1;31m{battery_raw}\033[0m"
     battery_padded = battery_state + (" " * (28 - len(battery_raw)))
+
+    batt_live_icon = "🟢" if battery_live else "🔴"
+    batt_live_raw = "LIVE (SYNCED)" if battery_live else "FROZEN (STUCK)"
+    batt_live_state = f"\033[1;32m{batt_live_raw}\033[0m" if battery_live else f"\033[1;31m{batt_live_raw}\033[0m"
+    batt_live_padded = batt_live_state + (" " * (28 - len(batt_live_raw)))
     
     print("\n\033[1;35m┌──────────────────────────────────────────────────────────┐\033[0m")
     print("\033[1;35m│\033[0m          ⚙️  \033[1mTERMUX BACKGROUND STABILITY ENGINE\033[0m          \033[1;35m│\033[0m")
@@ -556,9 +571,12 @@ def show_status(full=False):
     print("\033[1;35m│\033[0m                                                          \033[1;35m│\033[0m")
     print(f"\033[1;35m│\033[0m  {battery_icon}  Battery Optimization : {battery_padded}\033[1;35m│\033[0m")
     print("\033[1;35m│\033[0m      ↳ Whitelisted from App Standby & Doze               \033[1;35m│\033[0m")
+    print("\033[1;35m│\033[0m                                                          \033[1;35m│\033[0m")
+    print(f"\033[1;35m│\033[0m  {batt_live_icon}  Battery Sensor Sync  : {batt_live_padded}\033[1;35m│\033[0m")
+    print("\033[1;35m│\033[0m      ↳ Real-time hardware battery & charging updates     \033[1;35m│\033[0m")
     print("\033[1;35m├──────────────────────────────────────────────────────────┤\033[0m")
     
-    if not phantom_opt or not battery_opt:
+    if not phantom_opt or not battery_opt or not battery_live:
         msg = "  ⚠️  Some constraints are active. Run: optimize fix"
         print(f"\033[1;35m│\033[0m\033[1;33m{msg:<58}\033[0m\033[1;35m│\033[0m")
     else:
@@ -577,9 +595,15 @@ def show_device_info():
     android_ver, _, _ = run_adb(["shell", "getprop", "ro.build.version.release"])
     battery_info, _, _ = run_adb(["shell", "dumpsys", "battery"])
 
+    was_frozen = "UPDATES STOPPED" in battery_info or "UpdatesStopped: true" in battery_info
+    if was_frozen:
+        run_adb(["shell", "dumpsys", "battery", "reset"])
+        battery_info, _, _ = run_adb(["shell", "dumpsys", "battery"])
+
     level = "?"
     temp_c = "?"
     batt_status = "Unknown"
+    power_source = "Unplugged"
     for line in battery_info.splitlines():
         line_s = line.strip()
         if line_s.startswith("level:"):
@@ -593,6 +617,14 @@ def show_device_info():
         elif line_s.startswith("status:"):
             code = line_s.split(":")[1].strip()
             batt_status = {"2": "Charging", "3": "Discharging", "4": "Not Charging", "5": "Full"}.get(code, "Unknown")
+        elif line_s.startswith("AC powered: true"):
+            power_source = "AC"
+        elif line_s.startswith("USB powered: true"):
+            power_source = "USB"
+        elif line_s.startswith("Wireless powered: true"):
+            power_source = "Wireless"
+        elif line_s.startswith("Dock powered: true"):
+            power_source = "Dock"
 
     cpu_load, _, _ = run_adb(["shell", "top", "-b", "-n", "1", "-m", "5"])
     cpu_lines = []
@@ -610,11 +642,14 @@ def show_device_info():
                 cmd_short = os.path.basename(cmd_name)
                 cpu_lines.append(f"{cmd_short:<26} {cpu_pct:>5}% CPU  (PID {pid})")
 
+    status_disp = f"{batt_status} ({power_source})" if power_source != "Unplugged" else f"{batt_status} (Unplugged)"
     print("\n\033[1;35m┌──────────────────────────────────────────────────────────┐\033[0m")
     print("\033[1;35m│\033[0m             📱 \033[1mDEVICE SYSTEM METRICS & HEALTH\033[0m            \033[1;35m│\033[0m")
     print("\033[1;35m├──────────────────────────────────────────────────────────┤\033[0m")
     print(f"\033[1;35m│\033[0m  Model   : \033[1;33m{model.strip()}\033[0m (Android {android_ver.strip()})")
-    print(f"\033[1;35m│\033[0m  Battery : \033[1;32m{level}%\033[0m | Temp: \033[1;36m{temp_c}°C\033[0m | Status: {batt_status}")
+    print(f"\033[1;35m│\033[0m  Battery : \033[1;32m{level}%\033[0m | Temp: \033[1;36m{temp_c}°C\033[0m | Status: {status_disp}")
+    if was_frozen:
+        print(f"\033[1;35m│\033[0m  \033[1;33m⚡ Live Sync: Auto-reset frozen battery state to normal\033[0m   \033[1;35m│\033[0m")
     print("\033[1;35m├──────────────────────────────────────────────────────────┤\033[0m")
     print("\033[1;35m│\033[0m  \033[1mTop CPU Processes:\033[0m")
     if cpu_lines:
@@ -638,6 +673,7 @@ def fix_settings(include_apps=False):
         # 2. Whitelist com.termux from deviceidle
         ("Whitelist Termux (Doze bypass)", ["shell", "dumpsys deviceidle whitelist +com.termux"]),
         ("Standby bucket → active", ["shell", "am set-standby-bucket com.termux active"]),
+        ("Reset battery service (restore live sync)", ["shell", "dumpsys battery reset"]),
     ]
     failed = sum(1 for label, args in steps if _adb_step(label, args) != 0)
 
@@ -785,7 +821,8 @@ def print_help():
     print("  optimize status             Quick audit (compact one-liner)")
     print("  optimize status -f          Full detailed audit with descriptions")
     print("  optimize info               Show device metrics, battery %, temperature, & top CPU")
-    print("  optimize fix                Optimize via ADB (phantom limit → 2048, battery whitelist)")
+    print("  optimize reset-battery      Restore live hardware battery sync if stuck or frozen")
+    print("  optimize fix                Optimize via ADB (phantom limit → 2048, Doze bypass, battery sync)")
     print("  optimize fix --apps         Fix system limits AND auto-optimize background apps")
     print()
     print("\033[1mApp Background & Battery Management:\033[0m")
@@ -825,6 +862,14 @@ def main():
         full = len(args) > 1 and args[1] in ["-f", "--full"]
         show_status(full=full)
     elif cmd in ["info", "sysinfo", "battery", "temp"]:
+        show_device_info()
+    elif cmd in ["reset-battery", "battery-reset", "unfreeze-battery"]:
+        dev = ensure_adb()
+        if not dev:
+            print("\033[1;31m❌ ADB is offline. Run 'adbcon' first.\033[0m")
+            sys.exit(1)
+        run_adb(["shell", "dumpsys", "battery", "reset"])
+        print("\033[1;32m✓\033[0m Battery service reset: live hardware reporting restored.\n")
         show_device_info()
     elif cmd == "fix":
         include_apps = len(args) > 1 and args[1] in ["-a", "--apps"]

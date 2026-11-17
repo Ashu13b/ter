@@ -42,6 +42,10 @@ adb-sysinfo() {
     
     # Parse battery status
     local battery_info; battery_info=$(adb -s "$dev" shell dumpsys battery 2>/dev/null | tr -d '\r')
+    if echo "$battery_info" | grep -q "UPDATES STOPPED"; then
+        adb -s "$dev" shell dumpsys battery reset >/dev/null 2>&1
+        battery_info=$(adb -s "$dev" shell dumpsys battery 2>/dev/null | tr -d '\r')
+    fi
     local level; level=$(echo "$battery_info" | grep -E "^\s*level:" | awk '{print $2}')
     local temp; temp=$(echo "$battery_info" | grep -E "^\s*temperature:" | awk '{print $2}')
     local temp_c; temp_c=$(python3 -c "print($temp / 10.0)" 2>/dev/null || echo "?")
@@ -54,12 +58,25 @@ adb-sysinfo() {
         4) batt_status="Not Charging" ;;
         5) batt_status="Full" ;;
     esac
+
+    local plugged="Unplugged"
+    if echo "$battery_info" | grep -q "AC powered: true"; then
+        plugged="AC"
+    elif echo "$battery_info" | grep -q "USB powered: true"; then
+        plugged="USB"
+    elif echo "$battery_info" | grep -q "Wireless powered: true"; then
+        plugged="Wireless"
+    fi
+    local status_disp="$batt_status ($plugged)"
+    if [ "$plugged" = "Unplugged" ] && [ "$batt_status" = "Discharging" ]; then
+        status_disp="Discharging"
+    fi
     
     # Parse CPU top processes
     local cpu_load; cpu_load=$(adb -s "$dev" shell top -n 1 -m 5 2>/dev/null | grep -E "%" | head -n 5)
 
     echo -e "  ${C_BOLD}Model:${C_RESET} ${C_YELLOW}$model${C_RESET} (Android $android_ver)"
-    echo -e "  ${C_BOLD}Battery:${C_RESET} ${C_GREEN}${level}%${C_RESET} | Temp: ${C_BLUE}${temp_c}°C${C_RESET} | Status: ${C_CYAN}$batt_status${C_RESET}"
+    echo -e "  ${C_BOLD}Battery:${C_RESET} ${C_GREEN}${level}%${C_RESET} | Temp: ${C_BLUE}${temp_c}°C${C_RESET} | Status: ${C_CYAN}$status_disp${C_RESET}"
     echo -e "\n  ${C_BOLD}${C_MAGENTA}Top CPU Consuming Processes:${C_RESET}"
     if [ -n "$cpu_load" ]; then
         echo "$cpu_load" | sed 's/^/  /'
