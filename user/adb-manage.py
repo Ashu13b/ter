@@ -202,7 +202,10 @@ CRITICAL_PATTERNS = [
     r"literm",
     r"browser",
     r"chrome",
-    r"openscrape"
+    r"openscrape",
+    r"maps",
+    r"gearhead",
+    r"projection"
 ]
 
 def classify_package(pkg):
@@ -224,6 +227,8 @@ def classify_package(pkg):
                 return "Developer/Core Tool"
             elif any(p in pattern for p in ["browser", "chrome", "openscrape"]):
                 return "Web Browser"
+            elif any(p in pattern for p in ["maps", "gearhead", "projection"]):
+                return "Navigation/Auto"
             return "System/Core Utility"
     return "Safe to Disable"
 

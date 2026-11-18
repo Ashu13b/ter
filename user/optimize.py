@@ -291,7 +291,8 @@ def adaptive_tiered_optimization(dry_run=False):
         "com.whatsapp", "org.kaggle.platform",
         "dev.expeei.literm", "org.telegram.messenger",
         "org.openscrape.browser", "com.android.chrome",
-        "com.google.android.inputmethod.latin", "org.pocketworkstation.pckeyboard"
+        "com.google.android.inputmethod.latin", "org.pocketworkstation.pckeyboard",
+        "com.google.android.apps.maps", "com.google.android.projection.gearhead"
     }
 
     tier_1_speed = []   # High usage: Speed-profile AOT compiled + Active Standby
@@ -362,7 +363,8 @@ def purge_background_apps():
         "com.termux", "com.termux.api", "com.termux.widget",
         "com.whatsapp", "org.kaggle.platform",
         "dev.expeei.literm", "org.telegram.messenger",
-        "org.openscrape.browser", "com.android.chrome", "com.heytap.browser"
+        "org.openscrape.browser", "com.android.chrome", "com.heytap.browser",
+        "com.google.android.apps.maps", "com.google.android.projection.gearhead"
     }
     protected.update({"com.google.android.inputmethod.latin", "org.pocketworkstation.pckeyboard"})
 
